@@ -6,7 +6,7 @@
 # 接口请求优化：把原本分散在各个股票函数里的 query_stock_orders（查询所有订单记录）提到了大循环的最外层统一查询 _query_all_orders_status，极大地降低了与 QMT 通信的开销和延迟。
 # 尾盘强平更安全：到达14:50后，自动跳出大循环，统一对还没完成交易的股票进行尾盘兜底操作。
 
-# @title SIRIUS T1 Realpro Parellel
+# @title SIRIUS T1 Real Pro 
 
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
