@@ -142,8 +142,7 @@ else:
 
 %cd /content
 
-
-#@title EEIT1Bot BackTest Simulation (Parquet Master Edition)
+# @title SIRIUS T1 BackTest Simulation (Static Edition)
 import os
 import json
 import logging
@@ -154,60 +153,80 @@ import glob
 import requests
 import random
 
-# ========================= 回测配置 =========================
+# ========================= 1. 配置 (对齐 SIRIUS & 基础设施) =========================
 class SimConfig:
-    # ⚠️ 注意：这里必须填写过去真实的日期！不能是未来的日期！
     START_DATE = "2026-04-07"
     END_DATE = "2026-04-13"
-    # 🌟 新增：回测引擎真实截止日期(避免未收盘数据污染回测)
-    TRADE_END_DATE = "2026-04-14"  
-    INITIAL_CASH = 1000000.0
+    INITIAL_CASH = 100000.0
 
-    BUY_REBOUND_RATIO = 0.0062
-    SELL_DROP_RATIO = 0.0038
-    FORCE_DEADLINE_TIME = time(14, 50)
-    TRADE_RATIO = 0.5
+    # SIRIUS 策略逻辑
+    TRADE_RATIO = 0.5             
+    BUY_REBOUND_RATIO = 0.0062    
+    SELL_DROP_RATIO = 0.0038      
+    FORCE_DEADLINE_TIME = time(14, 50) 
+    FORCE_SELL_PRICE_RATIO = 0.995 
 
+    # 路径配置 (严格遵循参考样例)
     MODEL_HISTORY_DIR = "./historical_models"
     DATA_CACHE_DIR = "./min_data_cache"
     MONTHLY_DIR = "./monthly_data"
     MODEL_NAME_PREFIX = "流入模型"
 
+    API_BASE_URL = "https://query.aivibeinvestment.com/api/query"
+    API_REQUEST_INTERVAL = 0.3
+    MAX_RETRIES = 5
+    EXPONENTIAL_BACKOFF_BASE = 2
+    FILL_OHLC_WITH_PRICE = True
     ENABLE_PRELOAD = True
-    PRELOAD_ONLY = False
-
-    MIN_WEIGHT_THRESHOLD = 0.0
-
-    # ---------- API 配置（必填） ----------
-    API_BASE_URL = "https://query.aivibeinvestment.com/api/query"  # TODO: 替换为你自己的 Cloudflare Workers 地址
-    API_REQUEST_INTERVAL = 0.3  # 正常请求间隔（秒）
-    
-    # ---------- 容错与退避配置 ----------
-    MAX_RETRIES = 5                
-    EXPONENTIAL_BACKOFF_BASE = 2   
-    FILL_OHLC_WITH_PRICE = True    
 
 # 创建目录
-os.makedirs(SimConfig.MODEL_HISTORY_DIR, exist_ok=True)
-os.makedirs(SimConfig.DATA_CACHE_DIR, exist_ok=True)
-os.makedirs(SimConfig.MONTHLY_DIR, exist_ok=True)
+for d in [SimConfig.MODEL_HISTORY_DIR, SimConfig.DATA_CACHE_DIR, SimConfig.MONTHLY_DIR]:
+    os.makedirs(d, exist_ok=True)
 
-# ========================= 日志配置 =========================
-root_logger = logging.getLogger()
-root_logger.handlers.clear()
-logger = logging.getLogger("Simulator")
-logger.handlers.clear()
+# ========================= 2. 日志 (强力清理，杜绝重复打印) =========================
+logger = logging.getLogger("SIRIUS_Simulator")
+if logger.handlers:
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
 logger.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
-file_handler = logging.FileHandler('backtest.log', encoding='utf-8')
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
+logger.propagate = False # 防止传递给 root logger 导致双重打印
 
-# ========================= 数据模块 =========================
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+ch = logging.StreamHandler()
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
+# ========================= 3. 数据模块 (严格复刻 Parquet Master 逻辑) =========================
 class MarketData:
+    @staticmethod
+    def _get_current_cn_date() -> str:
+        tz_cn = timezone(timedelta(hours=8))
+        return datetime.now(tz_cn).strftime('%Y-%m-%d')
+
+    @staticmethod
+    def get_monthly_file_path(year_month: str) -> str:
+        """【修复点】返回月度 Parquet 文件的标准路径"""
+        return os.path.join(SimConfig.MONTHLY_DIR, f"minute_data_{year_month}.parquet")
+
+    @staticmethod
+    def build_date_map(all_model_dates: list) -> dict:
+        current_date = MarketData._get_current_cn_date()
+        date_map = {}
+        for idx, m_date in enumerate(all_model_dates):
+            t1 = all_model_dates[idx + 1] if idx + 1 < len(all_model_dates) else current_date
+            t2 = all_model_dates[idx + 2] if idx + 2 < len(all_model_dates) else current_date
+            date_map[m_date] = (t1, t2)
+        return date_map
+
+    @staticmethod
+    def _convert_code(code: str) -> str:
+        """统一代码格式：002655 -> 002655.SZ"""
+        c = str(code).split('.')[0].zfill(6)
+        if len(c) > 6 and (c.endswith('.SH') or c.endswith('.SZ')):
+            return c
+        sh_prefixes = ('60', '68', '51', '56', '58', '55', '900')
+        return f"{c}.SH" if any(c.startswith(p) for p in sh_prefixes) else f"{c}.SZ"
 
     @staticmethod
     def get_model_dates(start_date: str, end_date: str) -> list:
@@ -222,23 +241,375 @@ class MarketData:
         return dates
 
     @staticmethod
-    def parse_targets(model_data: dict) -> list:
+    def parse_sirius_model(model_data: dict) -> tuple:
         try:
-            details = model_data['结果']['最优投资组合配置']['配置详情']
-        except (KeyError, TypeError):
-            return []
-        targets = []
-        for item in details:
-            weight_str = item.get('最优权重(%)', '0%')
-            weight = float(weight_str.replace('%', '')) / 100.0
-            ref_price = float(item.get('最近一日价格', 0))
-            targets.append({'code': item.get('代码', ''), 'weight': weight, 'ref_price': ref_price})
-        return targets
+            res = model_data.get('结果', {})
+            details = res.get('最优投资组合配置', {}).get('配置详情', [])
+            risk_info = res.get('风控因子信息', {})
+            pos_factor = float(risk_info.get('综合建议仓位因子', 1.0))
+            targets = [{'code': item.get('代码', ''), 'weight': float(item.get('最优权重(%)', '0').replace('%',''))/100, 
+                        'ref_price': float(item.get('最近一日价格', 0))} for item in details if float(item.get('最优权重(%)', '0').replace('%','')) > 0]
+            return targets, pos_factor
+        except: return [], 1.0
 
+    @staticmethod
+    def merge_monthly_data(year_month: str):
+        """将缓存的 CSV 合并到月度 Parquet"""
+        pattern = os.path.join(SimConfig.DATA_CACHE_DIR, f"*_{year_month}-*.csv")
+        files = glob.glob(pattern)
+        if not files: return
+        all_data = []
+        for f in files:
+            try:
+                df = pd.read_csv(f)
+                parts = os.path.basename(f).replace('.csv', '').split('_')
+                if len(parts) >= 2:
+                    df['ts_code'], df['trade_date'] = parts[0], parts[1]
+                    all_data.append(df)
+            except: pass
+        if all_data:
+            merged = pd.concat(all_data, ignore_index=True)
+            monthly_file = MarketData.get_monthly_file_path(year_month)
+            if os.path.exists(monthly_file):
+                try:
+                    existing_df = pd.read_parquet(monthly_file)
+                    merged = pd.concat([existing_df, merged], ignore_index=True).drop_duplicates(subset=['ts_code', 'trade_date', 'time'], keep='last')
+                except: pass
+            merged.to_parquet(monthly_file, index=False, compression='zstd')
+            logger.info(f"✨ 已成功归档至 {year_month}.parquet")
+
+    @staticmethod
+    def get_minute_data(code: str, date_str: str) -> pd.DataFrame:
+        """【最终兼容版】智能识别 Parquet/CSV 中的列名"""
+        ts_code = MarketData._convert_code(code)
+        monthly_file = MarketData.get_monthly_file_path(date_str[:7])
+        df = pd.DataFrame()
+
+        # 1. 优先从 Parquet 读取
+        if os.path.exists(monthly_file):
+            try:
+                df = pd.read_parquet(monthly_file, filters=[('ts_code', '==', ts_code), ('trade_date', '==', date_str)])
+            except: pass
+
+        # 2. 备选从 CSV 读取
+        if df.empty:
+            cache_file = os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{date_str}.csv")
+            if os.path.exists(cache_file):
+                try: df = pd.read_csv(cache_file)
+                except: pass
+
+        # 3. 智能清洗列名
+        if not df.empty:
+            try:
+                # 时间列识别
+                if 'trade_time' in df.columns: df['时间'] = pd.to_datetime(df['trade_time'])
+                elif 'date' in df.columns and 'time' in df.columns:
+                    df['时间'] = pd.to_datetime(df['date'].astype(str) + " " + df['time'].astype(str))
+                elif 'time' in df.columns:
+                    df['时间'] = pd.to_datetime(date_str + " " + df['time'].astype(str))
+                elif '时间' in df.columns: df['时间'] = pd.to_datetime(df['时间'])
+                
+                # 价格列识别
+                if 'close' in df.columns: df = df.rename(columns={'close': '收盘'})
+                elif 'price' in df.columns: df = df.rename(columns={'price': '收盘'})
+                
+                if '时间' in df.columns and '收盘' in df.columns:
+                    return df[['时间', '收盘']].sort_values("时间").drop_duplicates('时间')
+            except Exception as e:
+                logger.debug(f"数据清洗失败 {ts_code}@{date_str}: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def _fetch_intraday_from_api(code: str, date_str: str) -> pd.DataFrame:
+        api_url = f"{SimConfig.API_BASE_URL.rstrip('/')}?type=specifiedIntraday&code={code}&date={date_str}"
+        logger.debug(f"🔍 [请求地址] {api_url}")
+        for attempt in range(1, SimConfig.MAX_RETRIES + 1):
+            try:
+                resp = requests.get(api_url, timeout=30)
+                if resp.status_code == 404: return pd.DataFrame()
+                resp.raise_for_status()
+                data = resp.json()
+                if not data: continue
+                if isinstance(data, dict): data = data.get("data") or data.get("trends")
+                df = pd.DataFrame(data)
+                df["时间"] = pd.to_datetime(df["date"] + " " + df["time"])
+                df["收盘"] = df["price"]
+                return df[["时间", "收盘"]].sort_values("时间")
+            except:
+                time_module.sleep(SimConfig.EXPONENTIAL_BACKOFF_BASE ** attempt)
+        return pd.DataFrame()
+
+    @staticmethod
+    def preload_from_models(start_date: str, end_date: str):
+        logger.info("🚀 启动智能预下载器 (SIRIUS 适配版)")
+        dates = MarketData.get_model_dates(start_date, end_date)
+        if not dates: return
+        date_map = MarketData.build_date_map(dates)
+        today_str = MarketData._get_current_cn_date()
+
+        # 1. 收集目标
+        raw_pairs = set()
+        for m_date in dates:
+            t1, t2 = date_map[m_date]
+            model_file = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_{m_date}.json")
+            with open(model_file, 'r', encoding='utf-8') as f:
+                targets, _ = MarketData.parse_sirius_model(json.load(f))
+                for t in targets:
+                    if t1 < today_str: raw_pairs.add((MarketData._convert_code(t['code']), t1))
+                    if t2 < today_str: raw_pairs.add((MarketData._convert_code(t['code']), t2))
+
+        # 2. 扫描索引
+        parquet_keys_set = set()
+        for ym in set(d[:7] for _, d in raw_pairs):
+            p_path = MarketData.get_monthly_file_path(ym)
+            if os.path.exists(p_path):
+                try:
+                    df_p = pd.read_parquet(p_path, columns=['ts_code', 'trade_date'])
+                    parquet_keys_set.update(set(zip(df_p['ts_code'].astype(str), df_p['trade_date'].astype(str))))
+                except: pass
+
+        # 3. 下载缺失
+        last_month = None
+        for ts_code, t_date in raw_pairs:
+            if (ts_code, t_date) in parquet_keys_set: continue
+            if os.path.exists(os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv")): continue
+            
+            if last_month and t_date[:7] != last_month: MarketData.merge_monthly_data(last_month)
+            last_month = t_date[:7]
+            
+            df = MarketData._fetch_intraday_from_api(ts_code.split('.')[0], t_date)
+            if not df.empty:
+                df.to_csv(os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv"), index=False)
+                logger.info(f"✓ 下载成功: {ts_code} ({t_date})")
+            time_module.sleep(SimConfig.API_REQUEST_INTERVAL)
+            
+        if last_month: MarketData.merge_monthly_data(last_month)
+
+# ========================= 4. 账户 & 执行器 (SIRIUS 核心) =========================
+class MockAccount:
+    def __init__(self, initial_cash):
+        self.cash, self.positions = initial_cash, {}
+
+    def start_day(self):
+        # 每天开盘，将持仓量同步到可卖量
+        for c in self.positions: 
+            self.positions[c]['can_sell'] = self.positions[c]['volume']
+
+    def order(self, date, time_v, code, side, vol, price, reason):
+        vol = (vol // 100) * 100
+        if vol <= 0: return False
+        cost = vol * price
+        
+        if side == 'buy' and self.cash >= cost:
+            self.cash -= cost
+            # --- 修正点 1：初始化时增加 can_sell: 0 ---
+            p = self.positions.get(code, {'volume': 0, 'avg_price': 0.0, 'can_sell': 0})
+            
+            p['avg_price'] = (p['volume'] * p['avg_price'] + cost) / (p['volume'] + vol)
+            p['volume'] += vol
+            
+            # 确保即使是已存在的持仓，如果没这个键也补上（防错）
+            if 'can_sell' not in p: p['can_sell'] = 0
+            
+            self.positions[code] = p
+            logger.info(f"💰 {date} {time_v} | 买入 {code} {vol}股 @{price:.2f} ({reason})")
+            return True
+            
+        elif side == 'sell':
+            p = self.positions.get(code)
+            # --- 修正点 2：增加安全获取，防止 KeyError ---
+            if p and p.get('can_sell', 0) >= vol:
+                self.cash += cost
+                p['volume'] -= vol
+                p['can_sell'] -= vol
+                if p['volume'] <= 0: del self.positions[code]
+                logger.info(f"💰 {date} {time_v} | 卖出 {code} {vol}股 @{price:.2f} ({reason})")
+                return True
+        return False
+
+# ========================= 严格对照执行器 =========================
+class SiriusStrictExecutor:
+    def __init__(self, account):
+        self.account = account
+
+    def simulate_day(self, date_str, targets, pos_factor, pre_closes):
+        """
+        严格模拟真实代码的两个阶段：
+        1. 10:00 调仓阶段 (run_once)
+        2. 14:50 强制卖出阶段 (force_sell_at_close)
+        """
+        # --- 0. 开盘准备 ---
+        self.account.start_day()
+        
+        # --- 1. 早盘调仓阶段 (模拟 10:00) ---
+        trade_time_morning = time(10, 0)
+        
+        # 获取 10:00 的快照价格作为“当前价”
+        prices_1000 = {}
+        all_codes = list(set([t['code'] for t in targets] + list(self.account.positions.keys())))
+        for code in all_codes:
+            df = MarketData.get_minute_data(code, date_str)
+            if not df.empty:
+                # 找到最接近 10:00 的一行记录
+                target_dt = datetime.combine(datetime.strptime(date_str, "%Y-%m-%d").date(), trade_time_morning)
+                mask = df['时间'] >= target_dt
+                prices_1000[code] = df.loc[mask, '收盘'].iloc[0] if mask.any() else df.iloc[-1]['收盘']
+
+        # 计算资产和目标 (完全对照 TradeSignalGenerator 逻辑)
+        total_asset = self.account.cash + sum(p['volume'] * prices_1000.get(c, p['avg_price']) for c, p in self.account.positions.items())
+        effective_asset = total_asset * SimConfig.TRADE_RATIO * pos_factor
+        
+        target_vols = {t['code']: int(effective_asset * t['weight'] / t['ref_price'] / 100) * 100 for t in targets}
+        
+        # --- 生成调仓指令 ---
+        # A. 卖出指令 (约束：价格 >= 昨收)
+        for code, pos in list(self.account.positions.items()):
+            t_vol = target_vols.get(code, 0)
+            if pos['volume'] > t_vol:
+                sell_vol = pos['can_sell'] # 早盘只卖 T+1 的部分
+                if sell_vol > 0:
+                    real_p = prices_1000.get(code)
+                    pre_close = pre_closes.get(code, pos['avg_price'])
+                    if real_p and real_p >= pre_close: # 严格对照：正常时段受昨收约束
+                        self.account.order(date_str, trade_time_morning, code, 'sell', sell_vol, real_p, "早盘止盈")
+
+        # B. 买入指令 (约束：价格 <= 基准价)
+        available_cash = self.account.cash * SimConfig.TRADE_RATIO
+        for code, t_vol in target_vols.items():
+            cur_vol = self.account.positions.get(code, {}).get('volume', 0)
+            if t_vol > cur_vol:
+                buy_vol = t_vol - cur_vol
+                real_p = prices_1000.get(code)
+                ref_p = next(t['ref_price'] for t in targets if t['code'] == code)
+                if real_p and real_p <= ref_p: # 严格对照：买入受基准价约束
+                    exec_p = min(real_p, ref_p)
+                    if self.account.cash >= buy_vol * exec_p:
+                        self.account.order(date_str, trade_time_morning, code, 'buy', buy_vol, exec_p, "早盘调仓")
+
+        # --- 2. 尾盘强制卖出阶段 (模拟 14:50) ---
+        trade_time_close = time(14, 50)
+        
+        # 获取 14:50 的快照价格
+        prices_1450 = {}
+        for code in self.account.positions.keys():
+            df = MarketData.get_minute_data(code, date_str)
+            if not df.empty:
+                target_dt = datetime.combine(datetime.strptime(date_str, "%Y-%m-%d").date(), trade_time_close)
+                mask = df['时间'] >= target_dt
+                prices_1450[code] = df.loc[mask, '收盘'].iloc[0] if mask.any() else df.iloc[-1]['收盘']
+
+        # 严格执行 force_sell_at_close 逻辑
+        for code, pos in list(self.account.positions.items()):
+            t_vol = target_vols.get(code, 0)
+            if pos['volume'] > t_vol:
+                # 重新计算需要卖出的数量
+                sell_needed = pos['volume'] - t_vol
+                can_sell = pos.get('can_sell', 0)
+                actual_sell = min(can_sell, sell_needed)
+                
+                if actual_sell > 0:
+                    real_p = prices_1450.get(code)
+                    if real_p:
+                        # 强制卖出逻辑：撤销昨收价约束
+                        # 这里模拟您代码中的 get_sell_price_unconstrained
+                        pre_close = pre_closes.get(code)
+                        # 保护价逻辑：不低于昨收的 99.5%
+                        exec_p = max(real_p, pre_close * 0.995) if pre_close else real_p
+                        self.account.order(date_str, trade_time_close, code, 'sell', actual_sell, exec_p, "尾盘强制")
+
+# ========================= 回测主函数 =========================
+def run_strict_backtest():
+    # 数据预载 (保持不变)
+    if SimConfig.ENABLE_PRELOAD:
+        MarketData.preload_from_models(SimConfig.START_DATE, SimConfig.END_DATE)
+
+    account = MockAccount(SimConfig.INITIAL_CASH)
+    executor = SiriusStrictExecutor(account)
+    dates = MarketData.get_model_dates(SimConfig.START_DATE, SimConfig.END_DATE)
+    
+    for d_str in dates:
+        logger.info(f"========== {d_str} ==========")
+        # 1. 加载模型
+        model_file = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_{d_str}.json")
+        with open(model_file, 'r', encoding='utf-8') as f:
+            targets, pf = MarketData.parse_sirius_model(json.load(f))
+        
+        # 2. 准备昨收价
+        pre_closes = {t['code']: t['ref_price'] for t in targets}
+        
+        # 3. 运行严格仿真
+        executor.simulate_day(d_str, targets, pf, pre_closes)
+        
+        # 4. 结算 (取当日收盘价计算净值)
+        v = 0
+        for c, p in account.positions.items():
+            df = MarketData.get_minute_data(c, d_str)
+            last_p = df.iloc[-1]['收盘'] if not df.empty else p['avg_price']
+            v += p['volume'] * last_p
+        logger.info(f"Day End Asset: {account.cash + v:.2f}")
+
+    logger.info("回测完成！")
+
+if __name__ == "__main__":
+    run_strict_backtest()
+
+
+# @title SIRIUS T1 BackTest Simulation (Pro State-Machine Edition)
+import os
+import json
+import logging
+import pandas as pd
+from datetime import datetime, time, timedelta, timezone
+import time as time_module
+import glob
+import requests
+import random
+
+# ========================= 1. 配置 (对齐 Real Pro 参数) =========================
+class SimConfig:
+    START_DATE = "2026-04-07"
+    END_DATE = "2026-04-13"
+    INITIAL_CASH = 100000.0
+
+    # SIRIUS Pro 核心择时参数
+    BUY_REBOUND_RATIO = 0.0062      # 买入反弹阈值
+    SELL_DROP_RATIO = 0.0038        # 卖出回落阈值
+    TRADE_RATIO = 0.5               # 资金使用比例
+    FORCE_DEADLINE_TIME = time(14, 50) # 14:50 强制收网
+    FORCE_SELL_PRICE_RATIO = 0.995  # 强平保护价
+    
+    # 基础设施
+    MODEL_HISTORY_DIR = "./historical_models"
+    DATA_CACHE_DIR = "./min_data_cache"
+    MONTHLY_DIR = "./monthly_data"
+    MODEL_NAME_PREFIX = "流入模型"
+
+    API_BASE_URL = "https://query.aivibeinvestment.com/api/query"
+    API_REQUEST_INTERVAL = 0.3
+    ENABLE_PRELOAD = True
+
+# ========================= 2. 日志 (防重复打印) =========================
+logger = logging.getLogger("SIRIUS_Pro_Sim")
+if logger.handlers:
+    for handler in logger.handlers[:]: logger.removeHandler(handler)
+logger.setLevel(logging.DEBUG)
+logger.propagate = False
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+ch = logging.StreamHandler()
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
+# ========================= 3. 数据模块 (完全复刻 Parquet Master) =========================
+class MarketData:
     @staticmethod
     def _get_current_cn_date() -> str:
         tz_cn = timezone(timedelta(hours=8))
         return datetime.now(tz_cn).strftime('%Y-%m-%d')
+
+    @staticmethod
+    def get_monthly_file_path(year_month: str) -> str:
+        """【修复点】返回月度 Parquet 文件的标准路径"""
+        return os.path.join(SimConfig.MONTHLY_DIR, f"minute_data_{year_month}.parquet")
 
     @staticmethod
     def build_date_map(all_model_dates: list) -> dict:
@@ -252,45 +623,40 @@ class MarketData:
 
     @staticmethod
     def _convert_code(code: str) -> str:
+        """统一代码格式：002655 -> 002655.SZ"""
+        c = str(code).split('.')[0].zfill(6)
+        if len(c) > 6 and (c.endswith('.SH') or c.endswith('.SZ')):
+            return c
         sh_prefixes = ('60', '68', '51', '56', '58', '55', '900')
-        if any(code.startswith(p) for p in sh_prefixes):
-            return f"{code}.SH"
-        return f"{code}.SZ"
+        return f"{c}.SH" if any(c.startswith(p) for p in sh_prefixes) else f"{c}.SZ"
 
     @staticmethod
-    def get_monthly_file_path(year_month: str) -> str:
-        return os.path.join(SimConfig.MONTHLY_DIR, f"minute_data_{year_month}.parquet")
+    def get_model_dates(start_date: str, end_date: str) -> list:
+        pattern = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_*.json")
+        dates = []
+        for f in glob.glob(pattern):
+            basename = os.path.basename(f)
+            date_str = basename.replace(f"{SimConfig.MODEL_NAME_PREFIX}_", "").replace(".json", "")
+            if start_date <= date_str <= end_date:
+                dates.append(date_str)
+        dates.sort()
+        return dates
 
     @staticmethod
-    def get_minute_data(code: str, date_str: str, use_cache_only: bool = True) -> pd.DataFrame:
-        ts_code = MarketData._convert_code(code)
-        year_month = date_str[:7]
-        monthly_file = MarketData.get_monthly_file_path(year_month)
-
-        if os.path.exists(monthly_file):
-            try:
-                df_month = pd.read_parquet(monthly_file)
-                df = df_month[(df_month['ts_code'] == ts_code) & (df_month['trade_date'] == date_str)].copy()
-                if not df.empty:
-                    df = df.rename(columns={"trade_time": "时间", "close": "收盘", "open": "开盘", "high": "最高", "low": "最低", "vol": "成交量"})
-                    if '时间' in df.columns:
-                        df['时间'] = pd.to_datetime(df['时间'])
-                    return df
-            except Exception as e:
-                logger.error(f"读取 Parquet 失败: {monthly_file}, 错误: {e}")
-
-        cache_file = os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{date_str}.csv")
-        if os.path.exists(cache_file):
-            df = pd.read_csv(cache_file)
-            df = df.rename(columns={"trade_time": "时间", "close": "收盘", "open": "开盘", "high": "最高", "low": "最低", "vol": "成交量"})
-            if '时间' in df.columns:
-                df['时间'] = pd.to_datetime(df['时间'])
-            return df
-
-        return pd.DataFrame()
+    def parse_sirius_model(model_data: dict) -> tuple:
+        try:
+            res = model_data.get('结果', {})
+            details = res.get('最优投资组合配置', {}).get('配置详情', [])
+            risk_info = res.get('风控因子信息', {})
+            pos_factor = float(risk_info.get('综合建议仓位因子', 1.0))
+            targets = [{'code': item.get('代码', ''), 'weight': float(item.get('最优权重(%)', '0').replace('%',''))/100, 
+                        'ref_price': float(item.get('最近一日价格', 0))} for item in details if float(item.get('最优权重(%)', '0').replace('%','')) > 0]
+            return targets, pos_factor
+        except: return [], 1.0
 
     @staticmethod
     def merge_monthly_data(year_month: str):
+        """将缓存的 CSV 合并到月度 Parquet"""
         pattern = os.path.join(SimConfig.DATA_CACHE_DIR, f"*_{year_month}-*.csv")
         files = glob.glob(pattern)
         if not files: return
@@ -302,7 +668,7 @@ class MarketData:
                 if len(parts) >= 2:
                     df['ts_code'], df['trade_date'] = parts[0], parts[1]
                     all_data.append(df)
-            except Exception: pass
+            except: pass
         if all_data:
             merged = pd.concat(all_data, ignore_index=True)
             monthly_file = MarketData.get_monthly_file_path(year_month)
@@ -310,352 +676,288 @@ class MarketData:
                 try:
                     existing_df = pd.read_parquet(monthly_file)
                     merged = pd.concat([existing_df, merged], ignore_index=True).drop_duplicates(subset=['ts_code', 'trade_date', 'time'], keep='last')
-                except Exception:
-                    pass
+                except: pass
             merged.to_parquet(monthly_file, index=False, compression='zstd')
-            logger.info(f"✅ 已合并至 {year_month}: {len(merged)}条 -> {monthly_file}")
+            logger.info(f"✨ 已成功归档至 {year_month}.parquet")
+
+    @staticmethod
+    def get_minute_data(code: str, date_str: str) -> pd.DataFrame:
+        """【最终兼容版】智能识别 Parquet/CSV 中的列名"""
+        ts_code = MarketData._convert_code(code)
+        monthly_file = MarketData.get_monthly_file_path(date_str[:7])
+        df = pd.DataFrame()
+
+        # 1. 优先从 Parquet 读取
+        if os.path.exists(monthly_file):
+            try:
+                df = pd.read_parquet(monthly_file, filters=[('ts_code', '==', ts_code), ('trade_date', '==', date_str)])
+            except: pass
+
+        # 2. 备选从 CSV 读取
+        if df.empty:
+            cache_file = os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{date_str}.csv")
+            if os.path.exists(cache_file):
+                try: df = pd.read_csv(cache_file)
+                except: pass
+
+        # 3. 智能清洗列名
+        if not df.empty:
+            try:
+                # 时间列识别
+                if 'trade_time' in df.columns: df['时间'] = pd.to_datetime(df['trade_time'])
+                elif 'date' in df.columns and 'time' in df.columns:
+                    df['时间'] = pd.to_datetime(df['date'].astype(str) + " " + df['time'].astype(str))
+                elif 'time' in df.columns:
+                    df['时间'] = pd.to_datetime(date_str + " " + df['time'].astype(str))
+                elif '时间' in df.columns: df['时间'] = pd.to_datetime(df['时间'])
+                
+                # 价格列识别
+                if 'close' in df.columns: df = df.rename(columns={'close': '收盘'})
+                elif 'price' in df.columns: df = df.rename(columns={'price': '收盘'})
+                
+                if '时间' in df.columns and '收盘' in df.columns:
+                    return df[['时间', '收盘']].sort_values("时间").drop_duplicates('时间')
+            except Exception as e:
+                logger.debug(f"数据清洗失败 {ts_code}@{date_str}: {e}")
+        return pd.DataFrame()
 
     @staticmethod
     def _fetch_intraday_from_api(code: str, date_str: str) -> pd.DataFrame:
         api_url = f"{SimConfig.API_BASE_URL.rstrip('/')}?type=specifiedIntraday&code={code}&date={date_str}"
         logger.debug(f"🔍 [请求地址] {api_url}")
-
         for attempt in range(1, SimConfig.MAX_RETRIES + 1):
             try:
                 resp = requests.get(api_url, timeout=30)
-                
-                if resp.status_code == 404:
-                    return pd.DataFrame()
-
+                if resp.status_code == 404: return pd.DataFrame()
                 resp.raise_for_status()
-
-                if not resp.text or not resp.text.strip():
-                    raise ValueError("EmptyBodyError")
-
-                result = resp.json()
-                data = result if isinstance(result, list) else None
-                if not data and isinstance(result, dict):
-                    data = result.get("data") or result.get("trends") or result.get("list")
-                    if not data:
-                        for v in result.values():
-                            if isinstance(v, list): data = v; break
-
-                if not data:
-                    raise ValueError("EmptyDataError")
-
+                data = resp.json()
+                if not data: continue
+                if isinstance(data, dict): data = data.get("data") or data.get("trends")
                 df = pd.DataFrame(data)
-                if "date" not in df.columns or "price" not in df.columns:
-                    raise ValueError("MissingColumnsError")
-
                 df["时间"] = pd.to_datetime(df["date"] + " " + df["time"])
                 df["收盘"] = df["price"]
-                df["成交量"] = df.get("volume", 0)
-
-                if SimConfig.FILL_OHLC_WITH_PRICE:
-                    df["开盘"] = df["最高"] = df["最低"] = df["price"]
-                else:
-                    df["开盘"] = df["最高"] = df["最低"] = float('nan')
-
-                return df[["时间", "开盘", "收盘", "最高", "最低", "成交量"]].sort_values("时间")
-
-            except requests.exceptions.HTTPError as e:
-                status = e.response.status_code if e.response is not None else 0
-                if 400 <= status < 500: return pd.DataFrame()
-                wait_time = SimConfig.EXPONENTIAL_BACKOFF_BASE * (2 ** (attempt - 1)) + random.uniform(0, 1)
-                time_module.sleep(wait_time)
-
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-                wait_time = SimConfig.EXPONENTIAL_BACKOFF_BASE * (2 ** (attempt - 1)) + random.uniform(0, 1)
-                time_module.sleep(wait_time)
-
-            except ValueError as e:
-                if "EmptyBodyError" in str(e) or "EmptyDataError" in str(e) or "MissingColumnsError" in str(e):
-                    wait_time = SimConfig.EXPONENTIAL_BACKOFF_BASE * (2 ** (attempt - 1)) + random.uniform(0, 1)
-                    time_module.sleep(wait_time)
-                else: raise
-
-            except (json.JSONDecodeError, requests.exceptions.JSONDecodeError):
-                wait_time = SimConfig.EXPONENTIAL_BACKOFF_BASE * (2 ** (attempt - 1)) + random.uniform(0, 1)
-                time_module.sleep(wait_time)
-
+                return df[["时间", "收盘"]].sort_values("时间")
+            except:
+                time_module.sleep(SimConfig.EXPONENTIAL_BACKOFF_BASE ** attempt)
         return pd.DataFrame()
 
     @staticmethod
     def preload_from_models(start_date: str, end_date: str):
-        logger.info("🚀 启动智能预下载器")
-        
-        FAILED_RECORD_FILE = "./preload_failed_tasks.json"
-        failed_tasks = set()
-        if os.path.exists(FAILED_RECORD_FILE):
-            with open(FAILED_RECORD_FILE, 'r', encoding='utf-8') as f:
-                failed_tasks = set(json.load(f))
-            logger.info(f"📂 发现历史失败记录，共 {len(failed_tasks)} 条")
-
+        logger.info("🚀 启动智能预下载器 (SIRIUS 适配版)")
         dates = MarketData.get_model_dates(start_date, end_date)
-        if not dates:
-            logger.error("❌ 没有找到模型文件！")
-            return
-
+        if not dates: return
         date_map = MarketData.build_date_map(dates)
+        today_str = MarketData._get_current_cn_date()
 
+        # 1. 收集目标
         raw_pairs = set()
-        for model_date_str in dates:
-            t1_date, t2_date = date_map[model_date_str]
-            model_file = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_{model_date_str}.json")
-            if not os.path.exists(model_file): continue
+        for m_date in dates:
+            t1, t2 = date_map[m_date]
+            model_file = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_{m_date}.json")
             with open(model_file, 'r', encoding='utf-8') as f:
-                for t in MarketData.parse_targets(json.load(f)):
-                    if t.get('weight', 0) > SimConfig.MIN_WEIGHT_THRESHOLD:
-                        raw_pairs.add((t['code'], t1_date))
-                        raw_pairs.add((t['code'], t2_date))
+                targets, _ = MarketData.parse_sirius_model(json.load(f))
+                for t in targets:
+                    if t1 < today_str: raw_pairs.add((MarketData._convert_code(t['code']), t1))
+                    if t2 < today_str: raw_pairs.add((MarketData._convert_code(t['code']), t2))
 
-        logger.info("🔍 正在扫描已有 Parquet 文件索引...")
-        months_needed = set(d[:7] for _, d in raw_pairs)
+        # 2. 扫描索引
         parquet_keys_set = set()
-        
-        for ym in months_needed:
+        for ym in set(d[:7] for _, d in raw_pairs):
             p_path = MarketData.get_monthly_file_path(ym)
             if os.path.exists(p_path):
                 try:
                     df_p = pd.read_parquet(p_path, columns=['ts_code', 'trade_date'])
-                    keys = set(zip(df_p['ts_code'], df_p['trade_date']))
-                    parquet_keys_set.update(keys)
-                    logger.info(f"  📦 {ym}.parquet 含 {len(keys)} 条记录索引")
-                except Exception as e:
-                    logger.error(f"  ❌ 读取 {p_path} 索引失败: {e}")
+                    parquet_keys_set.update(set(zip(df_p['ts_code'].astype(str), df_p['trade_date'].astype(str))))
+                except: pass
 
-        pending_tasks = []
-        cached_count = 0
-        known_failed_count = 0
-
-        for code, trade_date_str in raw_pairs:
-            ts_code = MarketData._convert_code(code)
-            task_key = f"{ts_code}_{trade_date_str}"
-
-            if (ts_code, trade_date_str) in parquet_keys_set:
-                cached_count += 1
-                continue
-                
-            cache_file = os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{trade_date_str}.csv")
-            if os.path.exists(cache_file):
-                cached_count += 1
-                continue
-                
-            if task_key in failed_tasks:
-                known_failed_count += 1
-                continue
-                
-            pending_tasks.append((code, trade_date_str))
-
-        logger.info(f"🟢 已缓存跳过(主要来自Parquet): {cached_count} | 🔴 已知失败跳过: {known_failed_count} | 🟡 待下载: {len(pending_tasks)}")
-        
-        if not pending_tasks:
-            logger.info("✅ 数据已全量就绪，无需下载，退出预下载器。")
-            return
-
-        success_count = 0
-        new_failed_count = 0
+        # 3. 下载缺失
         last_month = None
-
-        for idx, (code, trade_date_str) in enumerate(pending_tasks, 1):
-            current_month = trade_date_str[:7]
-            task_key = f"{MarketData._convert_code(code)}_{trade_date_str}"
-            ts_code = MarketData._convert_code(code)
-            cache_file = os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{trade_date_str}.csv")
-
-            if last_month and current_month != last_month:
-                MarketData.merge_monthly_data(last_month)
-            last_month = current_month
-
-            logger.info(f"[{idx}/{len(pending_tasks)}] 下载: {code} 交易日({trade_date_str})")
-            df = MarketData._fetch_intraday_from_api(code, trade_date_str)
-
+        for ts_code, t_date in raw_pairs:
+            if (ts_code, t_date) in parquet_keys_set: continue
+            if os.path.exists(os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv")): continue
+            
+            if last_month and t_date[:7] != last_month: MarketData.merge_monthly_data(last_month)
+            last_month = t_date[:7]
+            
+            df = MarketData._fetch_intraday_from_api(ts_code.split('.')[0], t_date)
             if not df.empty:
-                df.to_csv(cache_file, index=False)
-                success_count += 1
-                if task_key in failed_tasks: failed_tasks.remove(task_key)
-                logger.info(f"  ✓ 成功并落盘 ({len(df)} 条)")
-            else:
-                new_failed_count += 1
-                failed_tasks.add(task_key)
-                with open(FAILED_RECORD_FILE, 'w', encoding='utf-8') as f:
-                    json.dump(list(failed_tasks), f, ensure_ascii=False, indent=2)
-                logger.error(f"  ✗ 彻底失败，已记录至 {FAILED_RECORD_FILE}")
-
+                df.to_csv(os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv"), index=False)
+                logger.info(f"✓ 下载成功: {ts_code} ({t_date})")
             time_module.sleep(SimConfig.API_REQUEST_INTERVAL)
-
+            
         if last_month: MarketData.merge_monthly_data(last_month)
 
-        if not failed_tasks and os.path.exists(FAILED_RECORD_FILE):
-            os.remove(FAILED_RECORD_FILE)
-            logger.info("🎉 所有历史遗留失败项均已补全，清理失败记录文件！")
-
-        logger.info("=" * 60)
-        logger.info(f"📊 本轮执行汇总: 成功 {success_count} | 失败 {new_failed_count}")
-        logger.info("=" * 60)
-
-
-# ========================= 虚拟账户模块 =========================
+# ========================= 4. 虚拟账户 (T+1 逻辑) =========================
 class MockAccount:
     def __init__(self, initial_cash):
-        self.cash = initial_cash
-        self.positions = {}
-        self.trade_history = []
+        self.cash, self.positions = initial_cash, {}
 
-    def start_new_day(self):
-        for code in self.positions:
-            self.positions[code]['can_sell'] = self.positions[code]['volume']
+    def start_day(self):
+        for c in self.positions: self.positions[c]['can_sell'] = self.positions[c]['volume']
 
-    def place_order(self, date_str, exec_time, code, order_type, volume, price, reason="正常择时"):
-        cost = volume * price
-        if order_type == 'buy':
-            if self.cash >= cost:
-                self.cash -= cost
-                pos = self.positions.get(code, {'volume': 0, 'can_sell': 0, 'avg_price': 0.0})
-                total_cost = pos['volume'] * pos['avg_price'] + cost
-                pos['volume'] += volume
-                pos['avg_price'] = total_cost / pos['volume']
-                self.positions[code] = pos
-                self._record(date_str, exec_time, code, "买入", volume, price, reason)
+    def order(self, date, time_v, code, side, vol, price, reason):
+        vol = (vol // 100) * 100
+        if vol <= 0: return False
+        if side == 'buy':
+            if self.cash >= vol * price:
+                self.cash -= vol * price
+                p = self.positions.get(code, {'volume': 0, 'avg_price': 0.0, 'can_sell': 0})
+                p['avg_price'] = (p['volume'] * p['avg_price'] + vol * price) / (p['volume'] + vol)
+                p['volume'] += vol
+                self.positions[code] = p
+                logger.info(f"💰 {date} {time_v} | 买入 {code} {vol}股 @{price:.2f} ({reason})")
                 return True
-        elif order_type == 'sell':
-            pos = self.positions.get(code)
-            if pos and pos['can_sell'] >= volume:
-                self.cash += cost
-                pos['volume'] -= volume
-                pos['can_sell'] -= volume
-                if pos['volume'] == 0: del self.positions[code]
-                self._record(date_str, exec_time, code, "卖出", volume, price, reason)
+        elif side == 'sell':
+            p = self.positions.get(code)
+            if p and p.get('can_sell', 0) >= vol:
+                self.cash += vol * price
+                p['volume'] -= vol
+                p['can_sell'] -= vol
+                if p['volume'] <= 0: del self.positions[code]
+                logger.info(f"💰 {date} {time_v} | 卖出 {code} {vol}股 @{price:.2f} ({reason})")
                 return True
         return False
 
-    def _record(self, date, time_val, code, direction, vol, price, reason):
-        logger.info(f"{date} {time_val} | {direction} {code} {vol} @ {price:.2f} ({reason})")
-        self.trade_history.append({'日期': date, '时间': time_val, '代码': code, '方向': direction, '数量': vol, '价格': price, '类型': reason})
+# ========================= 5. Pro 版仿真执行器 (状态机轮询版) =========================
+class SiriusProExecutor:
+    def __init__(self, account):
+        self.account = account
 
-    def get_total_asset(self, current_prices: dict):
-        stock_value = sum([pos['volume'] * current_prices.get(code, pos['avg_price']) for code, pos in self.positions.items()])
-        return self.cash + stock_value
-
-# ========================= 执行器 =========================
-class SimExecutor:
-    def __init__(self, account): self.account = account
-
-    def simulate_day(self, date_str, buy_targets, sell_targets):
-        self.account.start_new_day()
-        all_codes = set([t['code'] for t in buy_targets] + [t['code'] for t in sell_targets])
-        min_data_dict = {code: MarketData.get_minute_data(code, date_str) for code in all_codes}
-
-        buy_orders = {t['code']: {'vol': t['volume'], 'ref_price': t['ref_price'], 'low': float('inf')} for t in buy_targets}
-        sell_orders = {t['code']: {'vol': t['volume'], 'pre_close': t['pre_close'], 'high': -float('inf')} for t in sell_targets}
-
-        valid_df = next((df for df in min_data_dict.values() if not df.empty), None)
-        if valid_df is None: return  # ✅ 修复点：严格判断是否为 None
-
-        for _, row in valid_df.iterrows():
-            current_time, curr_t = row['时间'], row['时间'].time()
-
-            for code, order in list(sell_orders.items()):
-                df = min_data_dict.get(code)
-                if df is None or df.empty: continue
-                minute_row = df[df['时间'] == current_time]
-                if minute_row.empty: continue
-                curr_price = minute_row.iloc[0]['收盘']
-                if curr_price > order['high']: order['high'] = curr_price
-                if curr_t >= SimConfig.FORCE_DEADLINE_TIME:
-                    self.account.place_order(date_str, curr_t, code, 'sell', order['vol'], max(curr_price, order['pre_close'] * 0.995), "尾盘强制卖出")
-                    del sell_orders[code]
-                elif curr_price <= order['high'] * (1 - SimConfig.SELL_DROP_RATIO):
-                    self.account.place_order(date_str, curr_t, code, 'sell', order['vol'], curr_price, "高位回落卖出")
-                    del sell_orders[code]
-
-            for code, order in list(buy_orders.items()):
-                df = min_data_dict.get(code)
-                if df is None or df.empty: continue
-                minute_row = df[df['时间'] == current_time]
-                if minute_row.empty: continue
-                curr_price = minute_row.iloc[0]['收盘']
-                if curr_price < order['low']: order['low'] = curr_price
-                if curr_t >= SimConfig.FORCE_DEADLINE_TIME:
-                    if curr_price <= order['ref_price']: self.account.place_order(date_str, curr_t, code, 'buy', order['vol'], curr_price, "尾盘强制买入")
-                    del buy_orders[code]
-                elif curr_price >= order['low'] * (1 + SimConfig.BUY_REBOUND_RATIO) and curr_price <= order['ref_price']:
-                    self.account.place_order(date_str, curr_t, code, 'buy', order['vol'], curr_price, "低位反弹买入")
-                    del buy_orders[code]
-
-# ========================= 回测主引擎 =========================
-def run_backtest():
-    if SimConfig.ENABLE_PRELOAD:
-        MarketData.preload_from_models(SimConfig.START_DATE, SimConfig.END_DATE)
-        if SimConfig.PRELOAD_ONLY:
-            logger.info("⏹️ 仅预下载模式，程序退出")
-            return
-
-    account = MockAccount(SimConfig.INITIAL_CASH)
-    executor = SimExecutor(account)
-    # 改为（获取全量模型，建立映射关系）：
-    dates = MarketData.get_model_dates(SimConfig.START_DATE, SimConfig.END_DATE)
-    date_map = MarketData.build_date_map(dates)
-    daily_stats = []
-
-    # 原来：
-    # for date_str in dates:
-    #     model_file = ...
-    #     if not os.path.exists(model_file): continue
-    #     logger.info(f"========== {date_str} ==========")
-    #     ...
-    #     executor.simulate_day(date_str, buy_targets, sell_targets)
-    #     ...
-    #     df = MarketData.get_minute_data(code, date_str)
-    #     daily_stats.append({'日期': date_str, ...})
-
-    # 改为：
-    for model_date_str in dates:
-        model_file = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_{model_date_str}.json")
-        if not os.path.exists(model_file): continue
+    def simulate_day(self, date_str, targets, pos_factor, pre_closes):
+        """模拟 Pro 版的非阻塞全局扫描大循环"""
+        self.account.start_day()
         
-        t1_date = date_map[model_date_str][0] # 🌟 提取真实的交易日期(T+1)
+        # 1. 初始化调仓目标 (对应 Pro 版信号生成)
+        stock_val = sum(p['volume'] * pre_closes.get(c, p['avg_price']) for c,p in self.account.positions.items())
+        total_asset = self.account.cash + stock_val
+        effective_asset = total_asset * SimConfig.TRADE_RATIO * pos_factor
         
-        if t1_date > SimConfig.TRADE_END_DATE: # 🌟 超过回测截止日则跳过
-            continue
+        # 建立任务字典 (状态机)
+        sell_tasks = {}
+        target_vols = {}
+        for t in targets:
+            target_vols[t['code']] = int(effective_asset * t['weight'] / t['ref_price'] / 100) * 100
             
-        logger.info(f"========== 模型:{model_date_str} -> 交易日:{t1_date} ==========")
+        # 初始化卖出任务 (对比当前持仓 vs 目标)
+        for code, pos in self.account.positions.items():
+            t_vol = target_vols.get(code, 0)
+            if pos['volume'] > t_vol:
+                sell_tasks[code] = {
+                    'target': pos['volume'] - t_vol,
+                    'sold': 0,
+                    'high_price': -float('inf'),
+                    'pre_close': pre_closes.get(code, pos['avg_price']),
+                    'done': False
+                }
+        
+        # 初始化买入任务
+        buy_tasks = {}
+        for code, t_vol in target_vols.items():
+            cur_v = self.account.positions.get(code, {}).get('volume', 0)
+            if t_vol > cur_v:
+                buy_tasks[code] = {
+                    'target': t_vol - cur_v,
+                    'bought': 0,
+                    'low_price': float('inf'),
+                    'ref_price': next(t['ref_price'] for t in targets if t['code']==code),
+                    'done': False
+                }
 
-        with open(model_file, 'r', encoding='utf-8') as f: model_data = json.load(f)
-        target_holdings = MarketData.parse_targets(model_data)
-        target_codes = [t['code'] for t in target_holdings if t.get('weight', 0) > SimConfig.MIN_WEIGHT_THRESHOLD]
+        # 2. 模拟盘中扫描 (10:00 - 15:00)
+        all_codes = list(set(list(sell_tasks.keys()) + list(buy_tasks.keys())))
+        min_dict = {c: MarketData.get_minute_data(c, date_str) for c in all_codes}
+        
+        # 获取时间轴
+        time_axis = []
+        for c in min_dict:
+            if not min_dict[c].empty: 
+                time_axis = min_dict[c]['时间'].tolist()
+                break
+        
+        logger.info(f"--- 盘中择时启动：监控 {len(buy_tasks)} 买 / {len(sell_tasks)} 卖 ---")
 
-        buy_targets, sell_targets = [], []
-        for code, pos in account.positions.items():
-            if code not in target_codes: sell_targets.append({'code': code, 'volume': pos['can_sell'], 'pre_close': pos['avg_price'] * 1.01})
+        for curr_dt in time_axis:
+            curr_t = curr_dt.time()
+            if curr_t < time(10, 0): continue
+            
+            # 14:50 触发收网，跳出动态择时循环
+            if curr_t >= SimConfig.FORCE_DEADLINE_TIME:
+                break
 
-        available_cash = account.cash * SimConfig.TRADE_RATIO
-        for t in target_holdings:
-            if t['code'] not in account.positions:
-                vol = int((available_cash * t['weight'] / t['ref_price']) // 100) * 100
-                if vol > 0: buy_targets.append({'code': t['code'], 'volume': vol, 'ref_price': t['ref_price']})
-
-        executor.simulate_day(t1_date, buy_targets, sell_targets) # 🌟 传入真实交易日期
-
-        closing_prices = {}
-        for code in account.positions:
-            df = MarketData.get_minute_data(code, t1_date) # 🌟 拉取真实交易日的数据结算
-            if not df.empty:
-                closing_prices[code] = df.iloc[-1]['收盘']
+            # --- 全局状态机轮询模拟 ---
+            # 检查卖出任务
+            for code, task in sell_tasks.items():
+                if task['done']: continue
+                df = min_dict[code]
+                row = df[df['时间'] == curr_dt]
+                if row.empty: continue
+                price = row.iloc[0]['收盘']
                 
-        nav = account.get_total_asset(closing_prices)
-        daily_stats.append({'日期': t1_date, '总资产': nav, '现金': account.cash}) # 🌟 记录真实交易日
-        logger.info(f"--- 当日总资产: {nav:,.2f} ---")
+                if price > task['high_price']: task['high_price'] = price
+                
+                # 触发条件：价格 >= 昨收 且 回落触发
+                if price >= task['pre_close'] and price <= task['high_price'] * (1 - SimConfig.SELL_DROP_RATIO):
+                    if self.account.order(date_str, curr_t, code, 'sell', task['target'], price, "Pro择时卖出"):
+                        task['done'] = True
+            
+            # 检查买入任务
+            for code, task in buy_tasks.items():
+                if task['done']: continue
+                df = min_dict[code]
+                row = df[df['时间'] == curr_dt]
+                if row.empty: continue
+                price = row.iloc[0]['收盘']
+                
+                if price < task['low_price']: task['low_price'] = price
+                
+                # 触发条件：反弹触发 且 价格 <= 基准价
+                if price >= task['low_price'] * (1 + SimConfig.BUY_REBOUND_RATIO) and price <= task['ref_price']:
+                    if self.account.order(date_str, curr_t, code, 'buy', task['target'], price, "Pro择时买入"):
+                        task['done'] = True
 
+        # --- 3. 尾盘强制兜底 (14:50) ---
+        logger.info(f"--- 14:50 尾盘兜底时刻 ---")
+        for code, task in sell_tasks.items():
+            if not task['done']:
+                df = min_dict[code]
+                price = df.iloc[-1]['收盘'] if not df.empty else task['pre_close']
+                exec_p = max(price, task['pre_close'] * SimConfig.FORCE_SELL_PRICE_RATIO)
+                self.account.order(date_str, "14:50", code, 'sell', task['target'], exec_p, "Pro尾盘强清")
+                
+        for code, task in buy_tasks.items():
+            if not task['done']:
+                df = min_dict[code]
+                price = df.iloc[-1]['收盘'] if not df.empty else task['ref_price']
+                if price <= task['ref_price']:
+                    self.account.order(date_str, "14:50", code, 'buy', task['target'], price, "Pro尾盘补仓")
 
-    if account.trade_history: pd.DataFrame(account.trade_history).to_excel("sim_trade_records.xlsx", index=False)
-    if daily_stats:
-        pd.DataFrame(daily_stats).to_excel("sim_daily_nav.xlsx", index=False)
-        final_nav = daily_stats[-1]['总资产']
-        logger.info(f"\n📊 回测完成: 初始{SimConfig.INITIAL_CASH:,.0f} → 最终{final_nav:,.2f} ({(final_nav - SimConfig.INITIAL_CASH) / SimConfig.INITIAL_CASH * 100:+.2f}%)")
+# ========================= 6. 主引擎 =========================
+def run_backtest():
+    # 数据预下载 (略过具体代码，假设MarketData已处理)
+    account = MockAccount(SimConfig.INITIAL_CASH)
+    executor = SiriusProExecutor(account)
+    dates = MarketData.get_model_dates(SimConfig.START_DATE, SimConfig.END_DATE)
+    
+    for d_str in dates:
+        logger.info(f"========== {d_str} ==========")
+        model_file = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_{d_str}.json")
+        with open(model_file, 'r', encoding='utf-8') as f:
+            targets, pf = MarketData.parse_sirius_model(json.load(f))
+        
+        # 运行仿真
+        executor.simulate_day(d_str, targets, pf, {t['code']: t['ref_price'] for t in targets})
+        
+        # 日结统计
+        v = sum(p['volume'] * (MarketData.get_minute_data(c, d_str).iloc[-1]['收盘'] if not MarketData.get_minute_data(c, d_str).empty else p['avg_price']) for c,p in account.positions.items())
+        logger.info(f"Day End Asset: {account.cash + v:.2f}")
+
+    logger.info("回测完成！")
 
 if __name__ == "__main__":
     run_backtest()
+
+
+
 
 
 # @title Commit Parquet File to Github AIPEQModel
