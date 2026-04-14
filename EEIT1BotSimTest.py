@@ -160,11 +160,11 @@ class SimConfig:
     INITIAL_CASH = 100000.0
 
     # SIRIUS 策略逻辑
-    TRADE_RATIO = 0.5             
-    BUY_REBOUND_RATIO = 0.0062    
-    SELL_DROP_RATIO = 0.0038      
-    FORCE_DEADLINE_TIME = time(14, 50) 
-    FORCE_SELL_PRICE_RATIO = 0.995 
+    TRADE_RATIO = 0.5
+    BUY_REBOUND_RATIO = 0.0062
+    SELL_DROP_RATIO = 0.0038
+    FORCE_DEADLINE_TIME = time(14, 50)
+    FORCE_SELL_PRICE_RATIO = 0.995
 
     # 路径配置 (严格遵循参考样例)
     MODEL_HISTORY_DIR = "./historical_models"
@@ -247,7 +247,7 @@ class MarketData:
             details = res.get('最优投资组合配置', {}).get('配置详情', [])
             risk_info = res.get('风控因子信息', {})
             pos_factor = float(risk_info.get('综合建议仓位因子', 1.0))
-            targets = [{'code': item.get('代码', ''), 'weight': float(item.get('最优权重(%)', '0').replace('%',''))/100, 
+            targets = [{'code': item.get('代码', ''), 'weight': float(item.get('最优权重(%)', '0').replace('%',''))/100,
                         'ref_price': float(item.get('最近一日价格', 0))} for item in details if float(item.get('最优权重(%)', '0').replace('%','')) > 0]
             return targets, pos_factor
         except: return [], 1.0
@@ -308,11 +308,11 @@ class MarketData:
                 elif 'time' in df.columns:
                     df['时间'] = pd.to_datetime(date_str + " " + df['time'].astype(str))
                 elif '时间' in df.columns: df['时间'] = pd.to_datetime(df['时间'])
-                
+
                 # 价格列识别
                 if 'close' in df.columns: df = df.rename(columns={'close': '收盘'})
                 elif 'price' in df.columns: df = df.rename(columns={'price': '收盘'})
-                
+
                 if '时间' in df.columns and '收盘' in df.columns:
                     return df[['时间', '收盘']].sort_values("时间").drop_duplicates('时间')
             except Exception as e:
@@ -373,16 +373,16 @@ class MarketData:
         for ts_code, t_date in raw_pairs:
             if (ts_code, t_date) in parquet_keys_set: continue
             if os.path.exists(os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv")): continue
-            
+
             if last_month and t_date[:7] != last_month: MarketData.merge_monthly_data(last_month)
             last_month = t_date[:7]
-            
+
             df = MarketData._fetch_intraday_from_api(ts_code.split('.')[0], t_date)
             if not df.empty:
                 df.to_csv(os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv"), index=False)
                 logger.info(f"✓ 下载成功: {ts_code} ({t_date})")
             time_module.sleep(SimConfig.API_REQUEST_INTERVAL)
-            
+
         if last_month: MarketData.merge_monthly_data(last_month)
 
 # ========================= 4. 账户 & 执行器 (SIRIUS 核心) =========================
@@ -392,29 +392,29 @@ class MockAccount:
 
     def start_day(self):
         # 每天开盘，将持仓量同步到可卖量
-        for c in self.positions: 
+        for c in self.positions:
             self.positions[c]['can_sell'] = self.positions[c]['volume']
 
     def order(self, date, time_v, code, side, vol, price, reason):
         vol = (vol // 100) * 100
         if vol <= 0: return False
         cost = vol * price
-        
+
         if side == 'buy' and self.cash >= cost:
             self.cash -= cost
             # --- 修正点 1：初始化时增加 can_sell: 0 ---
             p = self.positions.get(code, {'volume': 0, 'avg_price': 0.0, 'can_sell': 0})
-            
+
             p['avg_price'] = (p['volume'] * p['avg_price'] + cost) / (p['volume'] + vol)
             p['volume'] += vol
-            
+
             # 确保即使是已存在的持仓，如果没这个键也补上（防错）
             if 'can_sell' not in p: p['can_sell'] = 0
-            
+
             self.positions[code] = p
             logger.info(f"💰 {date} {time_v} | 买入 {code} {vol}股 @{price:.2f} ({reason})")
             return True
-            
+
         elif side == 'sell':
             p = self.positions.get(code)
             # --- 修正点 2：增加安全获取，防止 KeyError ---
@@ -440,10 +440,10 @@ class SiriusStrictExecutor:
         """
         # --- 0. 开盘准备 ---
         self.account.start_day()
-        
+
         # --- 1. 早盘调仓阶段 (模拟 10:00) ---
         trade_time_morning = time(10, 0)
-        
+
         # 获取 10:00 的快照价格作为“当前价”
         prices_1000 = {}
         all_codes = list(set([t['code'] for t in targets] + list(self.account.positions.keys())))
@@ -458,9 +458,9 @@ class SiriusStrictExecutor:
         # 计算资产和目标 (完全对照 TradeSignalGenerator 逻辑)
         total_asset = self.account.cash + sum(p['volume'] * prices_1000.get(c, p['avg_price']) for c, p in self.account.positions.items())
         effective_asset = total_asset * SimConfig.TRADE_RATIO * pos_factor
-        
+
         target_vols = {t['code']: int(effective_asset * t['weight'] / t['ref_price'] / 100) * 100 for t in targets}
-        
+
         # --- 生成调仓指令 ---
         # A. 卖出指令 (约束：价格 >= 昨收)
         for code, pos in list(self.account.positions.items()):
@@ -486,36 +486,36 @@ class SiriusStrictExecutor:
                     if self.account.cash >= buy_vol * exec_p:
                         self.account.order(date_str, trade_time_morning, code, 'buy', buy_vol, exec_p, "早盘调仓")
 
-        # --- 2. 尾盘强制卖出阶段 (模拟 14:50) ---
-        trade_time_close = time(14, 50)
-        
-        # 获取 14:50 的快照价格
-        prices_1450 = {}
-        for code in self.account.positions.keys():
-            df = MarketData.get_minute_data(code, date_str)
-            if not df.empty:
-                target_dt = datetime.combine(datetime.strptime(date_str, "%Y-%m-%d").date(), trade_time_close)
-                mask = df['时间'] >= target_dt
-                prices_1450[code] = df.loc[mask, '收盘'].iloc[0] if mask.any() else df.iloc[-1]['收盘']
+        # # --- 2. 尾盘强制卖出阶段 (模拟 14:50) ---
+        # trade_time_close = time(14, 50)
 
-        # 严格执行 force_sell_at_close 逻辑
-        for code, pos in list(self.account.positions.items()):
-            t_vol = target_vols.get(code, 0)
-            if pos['volume'] > t_vol:
-                # 重新计算需要卖出的数量
-                sell_needed = pos['volume'] - t_vol
-                can_sell = pos.get('can_sell', 0)
-                actual_sell = min(can_sell, sell_needed)
-                
-                if actual_sell > 0:
-                    real_p = prices_1450.get(code)
-                    if real_p:
-                        # 强制卖出逻辑：撤销昨收价约束
-                        # 这里模拟您代码中的 get_sell_price_unconstrained
-                        pre_close = pre_closes.get(code)
-                        # 保护价逻辑：不低于昨收的 99.5%
-                        exec_p = max(real_p, pre_close * 0.995) if pre_close else real_p
-                        self.account.order(date_str, trade_time_close, code, 'sell', actual_sell, exec_p, "尾盘强制")
+        # # 获取 14:50 的快照价格
+        # prices_1450 = {}
+        # for code in self.account.positions.keys():
+        #     df = MarketData.get_minute_data(code, date_str)
+        #     if not df.empty:
+        #         target_dt = datetime.combine(datetime.strptime(date_str, "%Y-%m-%d").date(), trade_time_close)
+        #         mask = df['时间'] >= target_dt
+        #         prices_1450[code] = df.loc[mask, '收盘'].iloc[0] if mask.any() else df.iloc[-1]['收盘']
+
+        # # 严格执行 force_sell_at_close 逻辑
+        # for code, pos in list(self.account.positions.items()):
+        #     t_vol = target_vols.get(code, 0)
+        #     if pos['volume'] > t_vol:
+        #         # 重新计算需要卖出的数量
+        #         sell_needed = pos['volume'] - t_vol
+        #         can_sell = pos.get('can_sell', 0)
+        #         actual_sell = min(can_sell, sell_needed)
+
+        #         if actual_sell > 0:
+        #             real_p = prices_1450.get(code)
+        #             if real_p:
+        #                 # 强制卖出逻辑：撤销昨收价约束
+        #                 # 这里模拟您代码中的 get_sell_price_unconstrained
+        #                 pre_close = pre_closes.get(code)
+        #                 # 保护价逻辑：不低于昨收的 99.5%
+        #                 exec_p = max(real_p, pre_close * 0.995) if pre_close else real_p
+        #                 self.account.order(date_str, trade_time_close, code, 'sell', actual_sell, exec_p, "尾盘强制")
 
 # ========================= 回测主函数 =========================
 def run_strict_backtest():
@@ -526,20 +526,20 @@ def run_strict_backtest():
     account = MockAccount(SimConfig.INITIAL_CASH)
     executor = SiriusStrictExecutor(account)
     dates = MarketData.get_model_dates(SimConfig.START_DATE, SimConfig.END_DATE)
-    
+
     for d_str in dates:
         logger.info(f"========== {d_str} ==========")
         # 1. 加载模型
         model_file = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_{d_str}.json")
         with open(model_file, 'r', encoding='utf-8') as f:
             targets, pf = MarketData.parse_sirius_model(json.load(f))
-        
+
         # 2. 准备昨收价
         pre_closes = {t['code']: t['ref_price'] for t in targets}
-        
+
         # 3. 运行严格仿真
         executor.simulate_day(d_str, targets, pf, pre_closes)
-        
+
         # 4. 结算 (取当日收盘价计算净值)
         v = 0
         for c, p in account.positions.items():
