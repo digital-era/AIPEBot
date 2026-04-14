@@ -811,11 +811,11 @@ if __name__ == "__main__":
 
     if args.mode == 'once':
         bot.run_once()
-        # 单次模式下，若当前时间接近尾盘，也可尝试强制卖出（可选）
-        now = datetime.now()
-        if now.hour >= Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE:
-            logger.info("单次运行且当前时间已到尾盘，执行强制卖出")
-            bot.force_sell_at_close()
+        # # 单次模式下，若当前时间接近尾盘，也可尝试强制卖出（可选）
+        # now = datetime.now()
+        # if now.hour >= Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE:
+        #     logger.info("单次运行且当前时间已到尾盘，执行强制卖出")
+        #     bot.force_sell_at_close()
     else:
         last_trade_date = None
         last_force_sell_date = None
@@ -827,18 +827,18 @@ if __name__ == "__main__":
                 logger.info(f"进入交易时间，开始今日调仓: {today_str}")
                 bot.run_once()
                 last_trade_date = today_str
-            # 尾盘强制卖出（14:50 之后执行一次）
-            if (now.hour >= Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE
-                    and last_force_sell_date != today_str):
-                # 确保已经执行过调仓（即有缓存模型数据），否则先调仓再强制卖出
-                if last_trade_date == today_str:
-                    logger.info(f"尾盘时间到，执行强制卖出: {today_str}")
-                    bot.force_sell_at_close()
-                    last_force_sell_date = today_str
-                else:
-                    logger.info("今日尚未调仓，先执行调仓再强制卖出")
-                    bot.run_once()
-                    last_trade_date = today_str
-                    bot.force_sell_at_close()
-                    last_force_sell_date = today_str
+            # # 尾盘强制卖出（14:50 之后执行一次）
+            # if (now.hour >= Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE
+            #         and last_force_sell_date != today_str):
+            #     # 确保已经执行过调仓（即有缓存模型数据），否则先调仓再强制卖出
+            #     if last_trade_date == today_str:
+            #         logger.info(f"尾盘时间到，执行强制卖出: {today_str}")
+            #         bot.force_sell_at_close()
+            #         last_force_sell_date = today_str
+            #     else:
+            #         logger.info("今日尚未调仓，先执行调仓再强制卖出")
+            #         bot.run_once()
+            #         last_trade_date = today_str
+            #         bot.force_sell_at_close()
+            #         last_force_sell_date = today_str
             time.sleep(30)
