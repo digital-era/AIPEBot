@@ -380,16 +380,22 @@ class QMTClient:
                 return False
 
     def get_pending_sell_orders(self, code: str = None) -> List:
+        """获取所有未成交（未报、已报、部分成交）的卖出委托"""
         with self.lock:
             if not self.connected:
                 return []
             try:
                 orders = self.xt_trader.query_stock_orders(self.account)
                 pending = []
+                # QMT订单状态说明（根据迅投文档）：
+                # 0=未报, 1=已报, 2=部成, 3=已成, 4=已撤, 5=废单, 6=部撤
+                # 卖出委托的未完成状态包括：未报(0)、已报(1)、部成(2)
+                valid_statuses = {0, 1, 2}
                 for order in orders:
-                    if order.m_nOrderType != xtconstant.STOCK_SELL:
+                    # 订单类型：1 表示卖出（STOCK_SELL）
+                    if order.m_nOrderType != 1:   # 1 = xtconstant.STOCK_SELL
                         continue
-                    if order.m_nOrderStatus in (xtconstant.ORDER_UNREPORTED, xtconstant.ORDER_REPORTED, xtconstant.ORDER_PARTIAL):
+                    if order.m_nOrderStatus in valid_statuses:
                         if code is None or order.m_strStockCode == code:
                             pending.append(order)
                 return pending
@@ -401,20 +407,40 @@ class QMTClient:
         """获取过去N分钟均价（使用1分钟K线）"""
         try:
             end_time = datetime.now()
-            start_time = end_time - pd.Timedelta(minutes=minutes)
-            # 下载分钟线数据（确保本地有数据）
-            xtdata.download_history_data(code, '1m', start_time.strftime("%Y%m%d%H%M%S"), end_time.strftime("%Y%m%d%H%M%S"))
+            # 开始时间固定为当天 09:30:00（交易时段起始）
+            start_time = datetime(end_time.year, end_time.month, end_time.day, 9, 30, 0)
+            
+            # 如果当前时间早于开盘，无法获取有效数据
+            if end_time < start_time:
+                logger.debug(f"当前时间 {end_time} 早于开盘时间，跳过动态参考价获取")
+                return None
+            
+            # 格式化时间字符串，确保长度为14位（YYYYMMDDHHMMSS）
+            start_str = start_time.strftime("%Y%m%d%H%M%S").ljust(14, '0')
+            end_str = end_time.strftime("%Y%m%d%H%M%S").ljust(14, '0')
+            
+            # 订阅分钟线数据（确保数据实时同步）
+            xtdata.subscribe_quote([code], period="1m", count=minutes + 10)
+            time.sleep(1)  # 等待数据同步
+            
+            # 下载历史分钟线数据（备用，确保本地有数据）
+            xtdata.download_history_data(code, '1m', start_str, end_str)
+            
+            # 获取市场数据
             data = xtdata.get_market_data(
                 field_list=['close'],
                 stock_list=[code],
                 period='1m',
-                start_time=start_time.strftime("%Y%m%d%H%M%S"),
-                end_time=end_time.strftime("%Y%m%d%H%M%S")
+                start_time=start_str,
+                end_time=end_str
             )
+            
             if data is not None and code in data:
                 df = data[code]
                 if not df.empty:
-                    return float(df['close'].mean())
+                    # 只取最近 minutes 分钟的数据（避免因早盘数据不足导致均价偏低）
+                    df_recent = df.tail(minutes)
+                    return float(df_recent['close'].mean())
         except Exception as e:
             logger.warning(f"获取 {code} 动态参考价失败: {e}")
         return None
