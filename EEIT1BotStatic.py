@@ -1,6 +1,5 @@
 # @title SIRIUS T1 Real Static
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 SIRIUS T+1 自动交易机器人 - 真实交易版（尾盘强制卖出版本，修复版）
 功能：
@@ -72,12 +71,17 @@ if HTTPS_PROXY:
 
 # ========================= 日志模块 =========================
 def setup_logger():
+    logger = logging.getLogger("SIRIUS_Bot")
+
+    if logger.handlers:  # ✅ 防止重复添加
+        return logger
+
     if not os.path.exists(Config.LOG_DIR):
         os.makedirs(Config.LOG_DIR)
+
     log_filename = datetime.now().strftime("SIRIUS_Bot_%Y%m%d.log")
     log_path = os.path.join(Config.LOG_DIR, log_filename)
 
-    logger = logging.getLogger("SIRIUS_Bot")
     logger.setLevel(logging.DEBUG if Config.DEBUG else logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
@@ -95,6 +99,15 @@ logger = setup_logger()
 
 # ========================= 模型加载模块 =========================
 class ModelLoader:
+    @staticmethod
+    def _convert_code(code: str) -> str:
+        """统一代码格式：002655 -> 002655.SZ"""
+        c = str(code).split('.')[0].zfill(6)
+        if len(c) > 6 and (c.endswith('.SH') or c.endswith('.SZ')):
+            return c
+        sh_prefixes = ('60', '68', '51', '56', '58', '55', '900')
+        return f"{c}.SH" if any(c.startswith(p) for p in sh_prefixes) else f"{c}.SZ"
+
     @staticmethod
     def _fetch_with_retry(url: str, retries: int = 3, timeout: int = 30) -> Optional[Dict]:
         for attempt in range(retries):
@@ -147,7 +160,10 @@ class ModelLoader:
             return [], 0.0
         target = []
         for item in config_list:
-            code = item.get('代码', '')
+            raw_code = item.get('代码', '')
+            code = ModelLoader._convert_code(raw_code)  # ← 唯一修改点
+            logger.info(f"代码格式转换: {raw_code} -> {code}")
+            
             name = item.get('名称', '')
             weight_str = item.get('最优权重(%)', '0')
             weight = float(str(weight_str).replace('%', '')) / 100.0
