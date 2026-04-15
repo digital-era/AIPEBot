@@ -450,6 +450,7 @@ class TradeSignalGenerator:
 
         # 构建目标字典（买入价受约束）
         target_dict = {}
+        all_names = {h['code']: h['name'] for h in target_holdings}
         for h in target_holdings:
             code = h['code']
             effective_weight = h['weight'] * position_factor
@@ -494,7 +495,7 @@ class TradeSignalGenerator:
                         'code': code,
                         'volume': sell_vol,
                         'price': sell_price,
-                        'name': code,
+                        'name': all_names.get(code, code), # 【修复】优先取中文名
                         'pre_close': pre_close
                     })
 
@@ -591,6 +592,7 @@ class PerformanceEvaluator:
             records.append({
                 '日期': datetime.now().strftime('%Y-%m-%d'),
                 '股票代码': code,
+                '股票名称': name_map.get(code, code), # 【新增字段】
                 '持股数量': pos['volume'],
                 '可卖数量': pos.get('can_sell', pos['volume']),
                 '成本价': pos['avg_price'],
@@ -622,6 +624,8 @@ class SIRIUSBot:
         self.cached_model_data = None
         self.cached_position_factor = None
         self.cached_target_holdings = None
+        self.code_to_name = {} # 新增名称映射
+
 
     def run_once(self):
         logger.info("========== SIRIUS Bot 开始运行 ==========")
@@ -634,6 +638,9 @@ class SIRIUSBot:
         if not target_holdings:
             logger.error("无有效目标持仓，退出")
             return
+        
+        # 【新增】存储名称映射
+        self.code_to_name = {h['code']: h['name'] for h in target_holdings}
 
         # 缓存模型数据供尾盘使用
         self.cached_model_data = model_data
@@ -692,6 +699,8 @@ class SIRIUSBot:
         positions = self.qmt.get_positions()
         account_info = self.qmt.get_account_info()
         total_asset = account_info.get('total_asset', 0) if account_info else 0
+        # 传入名称映射表
+        self.evaluator.save_position_snapshot(positions, total_asset, self.code_to_name)
         
         self.evaluator.save_position_snapshot(positions, total_asset)
         logger.info("收盘后任务完成：持仓快照已保存")
