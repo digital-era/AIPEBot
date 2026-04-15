@@ -1,106 +1,104 @@
-# @title SIRIUS T1 BackTest Simulation (Static Edition)
+# @title SIRIUS T1 Real Static
+#!/usr/bin/env python3
+"""
+SIRIUS T+1 自动交易机器人 - 真实交易版（尾盘强制卖出版本，修复版）
+功能：
+1. 从 GitHub 拉取最新模型 JSON（支持本地缓存）
+2. 连接 MiniQMT，获取真实账户持仓、资金、行情
+3. 买入价格 ≤ 模型基准价，卖出正常时段 ≥ 昨日收盘价
+4. 尾盘（14:50）强制卖出所有需要卖出的股票（无价格下限，确保资金释放）
+5. 完整日志、交易记录 Excel、持仓快照
+6. 支持单次运行和守护模式
+"""
+
 import os
+import sys
 import json
+import time
 import logging
-import pandas as pd
-from datetime import datetime, time, timedelta, timezone
-import time as time_module
-import glob
+import argparse
 import requests
-import random
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+import pandas as pd
 
-# ========================= 1. 配置 (对齐 SIRIUS & 基础设施) =========================
-class SimConfig:
-    START_DATE = "2026-04-07"
-    END_DATE = "2026-04-14"
-    INITIAL_CASH = 100000.0
+# 尝试导入 xtquant 库
+try:
+    from xtquant.xttrader import XtQuantTrader
+    from xtquant.xttype import StockAccount
+    from xtquant import xtconstant
+    from xtquant.xtdata import get_full_tick, get_market_data
+    XT_AVAILABLE = True
+except ImportError:
+    XT_AVAILABLE = False
+    print("错误: 未安装 xtquant，请确保 MiniQMT 客户端已安装并配置好 Python 环境")
+    sys.exit(1)
 
-    
-    DEBUG = False
-
-    # SIRIUS 策略逻辑
+# ========================= 配置部分 =========================
+class Config:
+    """真实交易配置（请根据实际情况修改）"""
+    QMT_PATH = r"D:\国金证券QMT\userdata_mini"
+    ACCOUNT_ID = "8888888888"
+    MODEL_URL = "https://raw.githubusercontent.com/digital-era/AIPEQModel/main/流入模型_New.json"
+    LOCAL_MODEL_CACHE = "流入模型_New.json.cache"
+    LOG_DIR = r"D:\AIPEQModelSIRIUS\Real\SIRIUS_Bot_Logs"
+    TRADE_RECORD_PATH = os.path.join(LOG_DIR, "trade_records.xlsx")
+    POSITION_SNAPSHOT_PATH = os.path.join(LOG_DIR, "position_snapshots.xlsx")
+    ORDER_TIMEOUT = 10
+    MAX_ORDER_VOLUME = 1000000
     TRADE_RATIO = 0.5
-    BUY_REBOUND_RATIO = 0.0062
-    SELL_DROP_RATIO = 0.0038
-    FORCE_DEADLINE_TIME = time(14, 50)
-    FORCE_SELL_PRICE_RATIO = 0.995
+    SLIPPAGE = 0.002
+    FORCE_SELL_PRICE_RATIO  =  0.995
+    REQUEST_TIMEOUT = 30
+    REQUEST_RETRIES = 3
+    REAL_TRADE = True
+    DEBUG = True
+    FORCE_SELL_HOUR = 14          # 尾盘强制卖出小时
+    FORCE_SELL_MINUTE = 50        # 尾盘强制卖出分钟
+    ORDER_INTERVAL = 1.0          # 委托间隔（秒）
 
-    # 路径配置 (严格遵循参考样例)
-    MODEL_HISTORY_DIR = "./historical_models"
-    DATA_CACHE_DIR = "./min_data_cache"
-    MONTHLY_DIR = "./monthly_data"
-    MODEL_NAME_PREFIX = "流入模型"
+# 代理配置（可选，从环境变量读取，若无则直连）
+#HTTP_PROXY = os.environ.get('HTTP_PROXY', '')
+#HTTPS_PROXY = os.environ.get('HTTPS_PROXY', '')
+HTTP_PROXY = 'http://127.0.0.1:7890'
+HTTPS_PROXY = 'http://127.0.0.1:7890'
 
-    API_BASE_URL = "https://query.aivibeinvestment.com/api/query"
-    API_REQUEST_INTERVAL = 0.3
-    MAX_RETRIES = 5
-    EXPONENTIAL_BACKOFF_BASE = 2
-    FILL_OHLC_WITH_PRICE = True
-    ENABLE_PRELOAD = True
-    # 新增涨跌停限制
-    LIMIT_UP_RATIO = 0.1    # 涨停 10%
-    LIMIT_DOWN_RATIO = -0.1 # 跌停 10%
-    # ST股票为 5%，如需支持可扩展为配置项
+PROXIES = {}
+if HTTP_PROXY:
+    PROXIES['http'] = HTTP_PROXY
+if HTTPS_PROXY:
+    PROXIES['https'] = HTTPS_PROXY
 
-    # 新增输出配置
-    OUTPUT_DIR = "./backtest_results"
-    TRADE_RECORD_FILE = os.path.join(OUTPUT_DIR, "trade_records.xlsx")
-    DAILY_SNAPSHOT_FILE = os.path.join(OUTPUT_DIR, "daily_snapshots.xlsx")
+# ========================= 日志模块 =========================
+def setup_logger():
+    logger = logging.getLogger("SIRIUS_Bot")
 
+    if logger.handlers:  # ✅ 防止重复添加
+        return logger
 
-# 创建目录
-for d in [SimConfig.MODEL_HISTORY_DIR, SimConfig.DATA_CACHE_DIR, SimConfig.MONTHLY_DIR, SimConfig.OUTPUT_DIR]:
-    os.makedirs(d, exist_ok=True)
+    if not os.path.exists(Config.LOG_DIR):
+        os.makedirs(Config.LOG_DIR)
 
-# ========================= 2. 日志 (强力清理，杜绝重复打印) =========================
-logger = logging.getLogger("SIRIUS_Simulator")
-if logger.handlers:
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
+    log_filename = datetime.now().strftime("SIRIUS_Bot_%Y%m%d.log")
+    log_path = os.path.join(Config.LOG_DIR, log_filename)
 
-logger.setLevel(logging.DEBUG if SimConfig.DEBUG else logging.INFO)
-logger.propagate = False
+    logger.setLevel(logging.DEBUG if Config.DEBUG else logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    fh = logging.FileHandler(log_path, encoding='utf-8')
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
 
-# 修复 1：先定义 ch，再设置级别
-ch = logging.StreamHandler()
-ch.setLevel(logging.DEBUG if SimConfig.DEBUG else logging.INFO) # ← 放在定义之后
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+    ch = logging.StreamHandler()
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
 
-# ========================= 3. 数据模块 (严格复刻 Parquet Master 逻辑) =========================
-class MarketData:
-    @staticmethod
-    def _get_current_cn_date() -> str:
-        tz_cn = timezone(timedelta(hours=8))
-        return datetime.now(tz_cn).strftime('%Y-%m-%d')
+    return logger
 
-    @staticmethod
-    def get_monthly_file_path(year_month: str) -> str:
-        """【修复点】返回月度 Parquet 文件的标准路径"""
-        return os.path.join(SimConfig.MONTHLY_DIR, f"minute_data_{year_month}.parquet")
+logger = setup_logger()
 
-
-    @staticmethod
-    def get_limit_prices(pre_close: float) -> tuple:
-        """计算涨跌停价格"""
-        if pre_close <= 0:
-            return None, None
-        limit_up = round(pre_close * (1 + SimConfig.LIMIT_UP_RATIO), 2)
-        limit_down = round(pre_close * (1 + SimConfig.LIMIT_DOWN_RATIO), 2)
-        return limit_up, limit_down
-
-    @staticmethod
-    def build_date_map(all_model_dates: list) -> dict:
-        current_date = MarketData._get_current_cn_date()
-        date_map = {}
-        for idx, m_date in enumerate(all_model_dates):
-            t1 = all_model_dates[idx + 1] if idx + 1 < len(all_model_dates) else current_date
-            t2 = all_model_dates[idx + 2] if idx + 2 < len(all_model_dates) else current_date
-            date_map[m_date] = (t1, t2)
-        return date_map
-
+# ========================= 模型加载模块 =========================
+class ModelLoader:
     @staticmethod
     def _convert_code(code: str) -> str:
         """统一代码格式：002655 -> 002655.SZ"""
@@ -111,692 +109,770 @@ class MarketData:
         return f"{c}.SH" if any(c.startswith(p) for p in sh_prefixes) else f"{c}.SZ"
 
     @staticmethod
-    def get_model_dates(start_date: str, end_date: str) -> list:
-        pattern = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_*.json")
-        dates = []
-        for f in glob.glob(pattern):
-            basename = os.path.basename(f)
-            date_str = basename.replace(f"{SimConfig.MODEL_NAME_PREFIX}_", "").replace(".json", "")
-            if start_date <= date_str <= end_date:
-                dates.append(date_str)
-        dates.sort()
-        return dates
-
-    @staticmethod
-    def parse_sirius_model(model_data: dict) -> tuple:
-        try:
-            res = model_data.get('结果', {})
-            details = res.get('最优投资组合配置', {}).get('配置详情', [])
-            risk_info = res.get('风控因子信息', {})
-            pos_factor = float(risk_info.get('综合建议仓位因子', 1.0))
-            
-            targets = []
-            for item in details:
-                weight = float(item.get('最优权重(%)', '0').replace('%', '')) / 100
-                if weight <= 0:
-                    continue
-                
-                targets.append({
-                    'code': item.get('代码', ''),
-                    'name': item.get('名称', ''),           # ← 新增 name 字段
-                    'weight': weight,
-                    'ref_price': float(item.get('最近一日价格', 0))
-                })
-            
-            return targets, pos_factor
-            
-        except Exception as e:
-            logger.error(f"解析模型失败: {e}")
-            return [], 1.0
-
-    @staticmethod
-    def merge_monthly_data(year_month: str):
-        """将缓存的 CSV 合并到月度 Parquet"""
-        pattern = os.path.join(SimConfig.DATA_CACHE_DIR, f"*_{year_month}-*.csv")
-        files = glob.glob(pattern)
-        if not files: return
-        all_data = []
-        for f in files:
+    def _fetch_with_retry(url: str, retries: int = 3, timeout: int = 30) -> Optional[Dict]:
+        for attempt in range(retries):
             try:
-                df = pd.read_csv(f)
-                parts = os.path.basename(f).replace('.csv', '').split('_')
-                if len(parts) >= 2:
-                    df['ts_code'], df['trade_date'] = parts[0], parts[1]
-                    all_data.append(df)
-            except: pass
-        if all_data:
-            merged = pd.concat(all_data, ignore_index=True)
-            monthly_file = MarketData.get_monthly_file_path(year_month)
-            if os.path.exists(monthly_file):
-                try:
-                    existing_df = pd.read_parquet(monthly_file)
-                    merged = pd.concat([existing_df, merged], ignore_index=True).drop_duplicates(subset=['ts_code', 'trade_date', 'time'], keep='last')
-                except: pass
-            merged.to_parquet(monthly_file, index=False, compression='zstd')
-            logger.info(f"✨ 已成功归档至 {year_month}.parquet")
-
-    @staticmethod
-    def get_minute_data(code: str, date_str: str) -> pd.DataFrame:
-        """【最终兼容版】智能识别 Parquet/CSV 中的列名"""
-        # 1. 先定义并转换 ts_code
-        ts_code = MarketData._convert_code(code)
-        monthly_file = MarketData.get_monthly_file_path(date_str[:7])
-        df = pd.DataFrame()
-        
-        # 标准化日期格式（去掉时间部分）
-        date_clean = str(date_str).split()[0]
-
-        # 1. 优先从 Parquet 读取
-        if os.path.exists(monthly_file):
-            try:
-                # 2. 先读取 Parquet 到 df 变量中
-                df = pd.read_parquet(monthly_file)
-                
-                # ==========================================
-                # ✅ 调试代码放在这里才是安全的，因为此时 ts_code 和 df 都已存在
-                logger.debug(f"👉 调试查询: ts_code={ts_code}, trade_date={date_clean}")
-                if 'trade_date' in df.columns:
-                    logger.debug(f"👉 Parquet中的trade_date样本: {df['trade_date'].unique()[:5]}")
+                resp = requests.get(url, timeout=timeout, headers={'User-Agent': 'SIRIUS-Bot/1.0'}, proxies=PROXIES)
+                if resp.status_code == 200:
+                    return resp.json()
                 else:
-                    logger.debug("👉 Parquet中没有 'trade_date' 列！当前列名:", df.columns.tolist())
-                # ==========================================
-
-                # 标准化日期列并过滤
-                if 'trade_date' in df.columns:
-                    df['trade_date'] = df['trade_date'].astype(str).str.split().str[0]
-                    df = df[df['trade_date'] == date_clean]
-                
-                if 'ts_code' in df.columns:
-                    df = df[df['ts_code'] == ts_code]
-                    
+                    logger.warning(f"HTTP {resp.status_code}, attempt {attempt+1}/{retries}")
             except Exception as e:
-                logger.debug(f"Parquet读取失败 {ts_code}@{date_str}: {e}")
-                df = pd.DataFrame()
-
-        # 2. 备选从 CSV 读取
-        if df.empty:
-            cache_file = os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{date_clean}.csv")
-            if os.path.exists(cache_file):
-                try: 
-                    df = pd.read_csv(cache_file)
-                except Exception as e:
-                    logger.debug(f"CSV读取失败 {ts_code}@{date_clean}: {e}")
-
-        # 3. 智能清洗列名
-        if not df.empty:
-            try:
-                # 时间列识别
-                if 'trade_time' in df.columns: 
-                    df['时间'] = pd.to_datetime(df['trade_time'])
-                elif 'date' in df.columns and 'time' in df.columns:
-                    df['时间'] = pd.to_datetime(df['date'].astype(str) + " " + df['time'].astype(str))
-                elif 'time' in df.columns:
-                    df['时间'] = pd.to_datetime(date_clean + " " + df['time'].astype(str))
-                elif '时间' in df.columns: 
-                    df['时间'] = pd.to_datetime(df['时间'])
-
-                # 价格列识别
-                if 'close' in df.columns: 
-                    df = df.rename(columns={'close': '收盘'})
-                elif 'price' in df.columns: 
-                    df = df.rename(columns={'price': '收盘'})
-
-                if '时间' in df.columns and '收盘' in df.columns:
-                    return df[['时间', '收盘']].sort_values("时间").drop_duplicates('时间')
-                    
-            except Exception as e:
-                logger.debug(f"数据清洗失败 {ts_code}@{date_str}: {e}")
-        
-        return pd.DataFrame()
+                logger.warning(f"Request failed: {e}, attempt {attempt+1}/{retries}")
+            time.sleep(2 ** attempt)
+        return None
 
     @staticmethod
-    def _fetch_intraday_from_api(code: str, date_str: str) -> pd.DataFrame:
-        api_url = f"{SimConfig.API_BASE_URL.rstrip('/')}?type=specifiedIntraday&code={code}&date={date_str}"
-        logger.debug(f"🔍 [请求地址] {api_url}")
-        for attempt in range(1, SimConfig.MAX_RETRIES + 1):
+    def load_latest_model() -> Optional[Dict]:
+        logger.info(f"从 GitHub 获取模型: {Config.MODEL_URL}")
+        data = ModelLoader._fetch_with_retry(Config.MODEL_URL, Config.REQUEST_RETRIES, Config.REQUEST_TIMEOUT)
+        if data:
             try:
-                resp = requests.get(api_url, timeout=30)
-                if resp.status_code == 404: return pd.DataFrame()
-                resp.raise_for_status()
-                data = resp.json()
-                if not data: continue
-                if isinstance(data, dict): data = data.get("data") or data.get("trends")
-                df = pd.DataFrame(data)
-                df["时间"] = pd.to_datetime(df["date"] + " " + df["time"])
-                df["收盘"] = df["price"]
-                return df[["时间", "收盘"]].sort_values("时间")
-            except:
-                time_module.sleep(SimConfig.EXPONENTIAL_BACKOFF_BASE ** attempt)
-        return pd.DataFrame()
-
-    @staticmethod
-    def preload_from_models(start_date: str, end_date: str):
-        logger.info("🚀 启动智能预下载器 (SIRIUS 适配版)")
-        dates = MarketData.get_model_dates(start_date, end_date)
-        if not dates: return
-        date_map = MarketData.build_date_map(dates)
-        today_str = MarketData._get_current_cn_date()
-
-        # 1. 收集目标
-        raw_pairs = set()
-        for m_date in dates:
-            t1, t2 = date_map[m_date]
-            model_file = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_{m_date}.json")
-            with open(model_file, 'r', encoding='utf-8') as f:
-                targets, _ = MarketData.parse_sirius_model(json.load(f))
-                for t in targets:
-                    if t1 < today_str: raw_pairs.add((MarketData._convert_code(t['code']), t1))
-                    if t2 < today_str: raw_pairs.add((MarketData._convert_code(t['code']), t2))
-
-        # 2. 扫描索引
-        parquet_keys_set = set()
-        for ym in set(d[:7] for _, d in raw_pairs):
-            p_path = MarketData.get_monthly_file_path(ym)
-            if os.path.exists(p_path):
-                try:
-                    df_p = pd.read_parquet(p_path, columns=['ts_code', 'trade_date'])
-                    parquet_keys_set.update(set(zip(df_p['ts_code'].astype(str), df_p['trade_date'].astype(str))))
-                except: pass
-
-        # 3. 下载缺失
-        last_month = None
-        for ts_code, t_date in raw_pairs:
-            if (ts_code, t_date) in parquet_keys_set: continue
-            if os.path.exists(os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv")): continue
-
-            if last_month and t_date[:7] != last_month: MarketData.merge_monthly_data(last_month)
-            last_month = t_date[:7]
-
-            df = MarketData._fetch_intraday_from_api(ts_code.split('.')[0], t_date)
-            if not df.empty:
-                df.to_csv(os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv"), index=False)
-                logger.info(f"✓ 下载成功: {ts_code} ({t_date})")
-            time_module.sleep(SimConfig.API_REQUEST_INTERVAL)
-
-        if last_month: MarketData.merge_monthly_data(last_month)
-
-# ========================= 4. 账户 & 执行器 (SIRIUS 核心) =========================
-class MockAccount:
-    def __init__(self, initial_cash):
-        self.cash = initial_cash
-        self.positions = {}
-        self.today_buys = set()  # ← 新增：记录当日买入的股票代码
-
-    def start_day(self):
-        """
-        每日开盘：清空当日买入标记
-        前一日的持仓全部变为可卖
-        """
-        self.today_buys.clear()  # ← 清空标记，昨日买入今已可卖
-        
-        # 确保所有持仓都有 can_sell 字段
-        for code in self.positions:
-            if 'can_sell' not in self.positions[code]:
-                self.positions[code]['can_sell'] = 0
-
-    def order(self, date, time_v, code, side, vol, price, reason, name=""):
-        vol = (vol // 100) * 100
-        if vol <= 0: 
-            return False
-        
-        cost = vol * price
-        display_name = f"{code}({name})" if name else code  # ← 新增显示名称
-
-        # ===== 买入逻辑 =====
-        if side == 'buy' and self.cash >= cost:
-            self.cash -= cost
-            
-            # 获取或初始化持仓
-            if code in self.positions:
-                p = self.positions[code]
-            else:
-                p = {'volume': 0, 'avg_price': 0.0, 'can_sell': 0, 'name': name}  # ← 新增 name 字段
-            
-            # 更新均价和持仓量
-            total_cost = p['volume'] * p['avg_price'] + cost
-            p['volume'] += vol
-            p['avg_price'] = total_cost / p['volume']
-            
-            # 保存名称（如果之前没有）
-            if 'name' not in p or not p['name']:
-                p['name'] = name
-            
-            self.positions[code] = p
-            self.today_buys.add(code)
-            
-            # ← 使用 display_name
-            logger.info(f"💰 {date} {time_v} | 买入 {display_name} {vol}股 @{price:.2f} ({reason}) [T+1锁定]")
-            return True
-
-        # ===== 卖出逻辑 =====
-        elif side == 'sell':
-            if code not in self.positions:
-                logger.warning(f"⚠️ 卖出失败：未持有 {display_name}")
-                return False
-            
-            # ← 关键检查：当日买入的不能卖
-            if code in self.today_buys:
-                logger.warning(f"⚠️ 卖出失败：{display_name} 当日买入，T+1 不可卖")
-                return False
-            
-            p = self.positions[code]
-            available = p.get('can_sell', 0)
-            
-            if available < vol:
-                logger.warning(f"⚠️ 卖出失败：{display_name} 可卖 {available} < 需卖 {vol}")
-                return False
-            
-            # 执行卖出
-            self.cash += vol * price
-            p['volume'] -= vol
-            p['can_sell'] -= vol
-            
-            if p['volume'] <= 0:
-                del self.positions[code]
-            else:
-                self.positions[code] = p
-            
-            # ← 使用 display_name
-            logger.info(f"💰 {date} {time_v} | 卖出 {display_name} {vol}股 @{price:.2f} ({reason})")
-            return True
-        
-        return False
-
-# ========================= 严格对照执行器 =========================
-class SiriusStrictExecutor:
-    def __init__(self, account):
-        self.account = account
-        self.today_trades = []  # 用于Excel导出
-        self.all_trades = []             # 累计所有交易
-        self.daily_snapshots = []        # 每日持仓快照
-
-    def _check_limit_up_down(self, code: str, price: float, side: str, pre_close: float, name: str = "") -> bool:
-        """检查是否触及涨跌停"""
-        display_name = f"{code}({name})" if name else code
-        
-        # 防御性检查
-        if price is None:
-            logger.warning(f"⚠️ {display_name} 价格为空，跳过{side}检测")
-            return False
-        
-        if pre_close is None or pre_close <= 0:
-            logger.warning(f"⚠️ {display_name} 昨收价异常({pre_close})，跳过{side}检测")
-            return False
-        
-        limit_up, limit_down = MarketData.get_limit_prices(pre_close)
-        if limit_up is None:
-            logger.warning(f"⚠️ {display_name} 无法计算涨跌停价")
-            return False
-
-        if side == 'buy' and price >= limit_up:
-            logger.warning(f"⚠️ {display_name} 触及涨停 {limit_up:.2f}，无法买入")
-            return True
-        
-        if side == 'sell' and price <= limit_down:
-            logger.warning(f"⚠️ {display_name} 触及跌停 {limit_down:.2f}，无法卖出")
-            return True
-        
-        return False
-
-
-    def _get_name(self, code, targets):
-        """获取股票名称"""
-        for t in targets:
-            if t['code'] == code:
-                return t.get('name', code)
-        return code
-
-
-    def _get_last_known_price(self, code: str, default_price: float) -> float:
-        """从历史持仓快照中寻找该股票上一个交易日的收盘价"""
-        for snap in reversed(self.daily_snapshots):
-            if snap['code'] == code and snap['last_price'] > 0:
-                return snap['last_price']
-        return default_price
-
-    def save_daily_snapshot(self, date_str):
-        """保存每日持仓快照"""
-        # 计算当日净值
-        total_value = self.account.cash
-        for code, pos in self.account.positions.items():
-            df = MarketData.get_minute_data(code, date_str)
-            # 修改点：找不到数据时，去历史快照找前一天的价格，而不是用持仓成本价
-            if not df.empty:
-                last_price = df.iloc[-1]['收盘']
-            else:
-                last_price = self._get_last_known_price(code, pos['avg_price'])
-
-            market_value = pos['volume'] * last_price
-            total_value += market_value
-            
-            self.daily_snapshots.append({
-                'date': date_str,
-                'code': code,
-                'name': pos.get('name', code),
-                'volume': pos['volume'],
-                'can_sell': pos.get('can_sell', 0),
-                'avg_price': pos['avg_price'],
-                'last_price': last_price,
-                'market_value': market_value,
-                'weight': 0  # 稍后计算
-            })
-        
-        # 计算权重
-        for snap in self.daily_snapshots:
-            if snap['date'] == date_str:
-                snap['weight'] = snap['market_value'] / total_value if total_value > 0 else 0
-        
-        # 添加现金记录
-        self.daily_snapshots.append({
-            'date': date_str,
-            'code': 'CASH',
-            'name': '现金',
-            'volume': 0,
-            'can_sell': 0,
-            'avg_price': 0,
-            'last_price': 1,
-            'market_value': self.account.cash,
-            'weight': self.account.cash / total_value if total_value > 0 else 0
-        })
-        
-        # 添加汇总记录
-        self.daily_snapshots.append({
-            'date': date_str,
-            'code': 'TOTAL',
-            'name': '总资产',
-            'volume': 0,
-            'market_value': total_value,
-            'weight': 1.0
-        })
-        
-        return total_value
-
-    def export_to_excel(self):
-        """导出所有交易记录和持仓快照到Excel"""
-        if not self.all_trades and not self.daily_snapshots:
-            logger.warning("无数据可导出")
-            return
-        
-        # 使用 ExcelWriter 创建多sheet文件
-        with pd.ExcelWriter(SimConfig.TRADE_RECORD_FILE, engine='openpyxl') as writer:
-            # Sheet 1: 交易记录
-            if self.all_trades:
-                df_trades = pd.DataFrame(self.all_trades)
-                # 调整列顺序
-                cols = ['date', 'time', 'code', 'name', 'side', 'volume', 'price', 
-                        'amount', 'reason', 'day']
-                # 计算成交金额
-                df_trades['amount'] = df_trades['volume'] * df_trades['price']
-                # 添加交易日序号
-                df_trades['day'] = pd.Categorical(df_trades['date']).codes + 1
-                df_trades = df_trades[[c for c in cols if c in df_trades.columns]]
-                
-                df_trades.to_excel(writer, sheet_name='交易记录', index=False)
-                logger.info(f"✅ 导出交易记录: {len(df_trades)} 笔")
-            
-            # Sheet 2: 持仓快照
-            if self.daily_snapshots:
-                df_snapshots = pd.DataFrame(self.daily_snapshots)
-                df_snapshots.to_excel(writer, sheet_name='持仓快照', index=False)
-                logger.info(f"✅ 导出持仓快照: {len(df_snapshots)} 条")
-            
-            # Sheet 3: 每日汇总
-            if self.daily_snapshots:
-                df_summary = pd.DataFrame([
-                    s for s in self.daily_snapshots 
-                    if s['code'] == 'TOTAL'
-                ])[['date', 'market_value']]
-                df_summary.columns = ['日期', '总资产']
-                df_summary['收益率'] = df_summary['总资产'].pct_change()
-                df_summary['累计收益'] = (df_summary['总资产'] / SimConfig.INITIAL_CASH - 1)
-                df_summary.to_excel(writer, sheet_name='每日汇总', index=False)
-
-
-    def simulate_day(self, date_str, targets, pos_factor, pre_closes):
-        """
-        严格模拟真实代码的两个阶段：
-        1. 10:00 调仓阶段 (run_once)
-        2. 14:50 强制卖出阶段 (force_sell_at_close)
-        """
-        # --- 0. 开盘准备 ---
-        self.account.start_day()
-
-        # --- 1. 早盘调仓阶段 (模拟 10:00) ---
-        trade_time_morning = time(10, 0)
-
-        # 获取 10:00 的快照价格作为“当前价”
-        prices_1000 = {}
-        all_codes = list(set([t['code'] for t in targets] + list(self.account.positions.keys())))
-        for code in all_codes:
-            df = MarketData.get_minute_data(code, date_str)
-            if not df.empty:
-                # 找到最接近 10:00 的一行记录
-                target_dt = datetime.combine(datetime.strptime(date_str, "%Y-%m-%d").date(), trade_time_morning)
-                mask = df['时间'] >= target_dt
-                prices_1000[code] = df.loc[mask, '收盘'].iloc[0] if mask.any() else df.iloc[-1]['收盘']
-
-        # 计算资产和目标 (完全对照 TradeSignalGenerator 逻辑)
-        #total_asset = self.account.cash + sum(p['volume'] * prices_1000.get(c, p['avg_price']) for c, p in self.account.positions.items())
-        # === 修改后 ===
-        total_pos_value = 0
-        for c, p in self.account.positions.items():
-            if c in prices_1000:
-                price = prices_1000[c]
-            else:
-                # 获取不到10:00实时价时，也用上一交易日收盘价估算
-                price = self._get_last_known_price(c, p['avg_price'])
-            total_pos_value += p['volume'] * price
-            
-        total_asset = self.account.cash + total_pos_value
-        # =================
-        effective_asset = total_asset * SimConfig.TRADE_RATIO * pos_factor
-
-        target_vols = {t['code']: int(effective_asset * t['weight'] / t['ref_price'] / 100) * 100 for t in targets}
-
-        # --- 生成调仓指令 ---
-        for code, pos in list(self.account.positions.items()):
-            t_vol = target_vols.get(code, 0)
-            if pos['volume'] > t_vol:
-                sell_vol = pos.get('can_sell', 0)
-                if sell_vol > 0:
-                    real_p = prices_1000.get(code)
-                    pre_close = pre_closes.get(code, pos['avg_price'])
-                    
-                    # 从持仓获取名称
-                    name = pos.get('name', '')
-
-                    # 修复：检查价格是否存在
-                    if real_p is None:
-                        logger.warning(f"⚠️ {code}({name}) 无实时价格，跳过卖出")
-                        continue
-
-                    # 跌停检测
-                    if self._check_limit_up_down(code, real_p, 'sell', pre_close, name):
-                        continue  # 跌停，跳过卖出
-                    
-                    if real_p >= pre_close:  # 严格对照：正常时段受昨收约束
-                        # 传递 name 参数
-                        self.account.order(date_str, trade_time_morning, code, 'sell', 
-                                        sell_vol, real_p, "早盘止盈", name)
-                        
-        # B. 买入指令 (约束：价格 <= 基准价)
-        available_cash = self.account.cash * SimConfig.TRADE_RATIO
-        for code, t_vol in target_vols.items():
-            cur_vol = self.account.positions.get(code, {}).get('volume', 0)
-            if t_vol > cur_vol:
-                buy_vol = t_vol - cur_vol
-                real_p = prices_1000.get(code)
-                
-                # 获取目标信息
-                target_info = next((t for t in targets if t['code'] == code), None)
-                if target_info is None:
-                    continue
-                    
-                ref_p = target_info['ref_price']
-                name = target_info.get('name', '')  # ← 获取名称
-
-                if real_p is None:
-                    logger.warning(f"⚠️ {code}({name}) 无实时价格，跳过买入")
-                    continue
-                                  
-                pre_close = pre_closes.get(code, ref_p)
-                if self._check_limit_up_down(code, real_p, 'buy', pre_close, name):
-                    continue
-
-                if real_p <= ref_p:
-                    exec_p = min(real_p, ref_p)
-                    if self.account.cash >= buy_vol * exec_p:
-                        # ← 传递 name 参数
-                        self.account.order(date_str, trade_time_morning, code, 'buy', 
-                                        buy_vol, exec_p, "早盘调仓", name)
-                        
-        # # --- 2. 尾盘强制卖出阶段 (模拟 14:50) ---
-        # trade_time_close = time(14, 50)
-
-        # # 获取 14:50 的快照价格
-        # prices_1450 = {}
-        # for code in self.account.positions.keys():
-        #     df = MarketData.get_minute_data(code, date_str)
-        #     if not df.empty:
-        #         target_dt = datetime.combine(datetime.strptime(date_str, "%Y-%m-%d").date(), trade_time_close)
-        #         mask = df['时间'] >= target_dt
-        #         prices_1450[code] = df.loc[mask, '收盘'].iloc[0] if mask.any() else df.iloc[-1]['收盘']
-
-        # # 严格执行 force_sell_at_close 逻辑
-        # for code, pos in list(self.account.positions.items()):
-        #     t_vol = target_vols.get(code, 0)
-        #     if pos['volume'] > t_vol:
-        #         # 重新计算需要卖出的数量
-        #         sell_needed = pos['volume'] - t_vol
-        #         can_sell = pos.get('can_sell', 0)
-        #         actual_sell = min(can_sell, sell_needed)
-
-        #         if actual_sell > 0:
-        #             real_p = prices_1450.get(code)
-        #             if real_p:
-        #                 # 强制卖出逻辑：撤销昨收价约束
-        #                 # 这里模拟您代码中的 get_sell_price_unconstrained
-        #                 pre_close = pre_closes.get(code)
-        #                 # 保护价逻辑：不低于昨收的 99.5%
-        #                 exec_p = max(real_p, pre_close * 0.995) if pre_close else real_p
-        #                 self.account.order(date_str, trade_time_close, code, 'sell', actual_sell, exec_p, "尾盘强制")
-        
-
-# ========================= 回测主函数 =========================
-def run_strict_backtest():
-    if SimConfig.ENABLE_PRELOAD:
-        MarketData.preload_from_models(SimConfig.START_DATE, SimConfig.END_DATE)
-
-    account = MockAccount(SimConfig.INITIAL_CASH)
-    executor = SiriusStrictExecutor(account)
-    
-    # 获取模型日期列表
-    model_dates = MarketData.get_model_dates(SimConfig.START_DATE, SimConfig.END_DATE)
-    
-    if not model_dates:
-        logger.error("未找到模型文件")
-        return
-    
-    logger.info(f"找到模型日期: {model_dates}")
-
-    # 获取中国时间今天日期
-    tz_cn = timezone(timedelta(hours=8))
-    today_cn = datetime.now(tz_cn).strftime('%Y-%m-%d')
-    logger.info(f"中国时间今天: {today_cn}")
-
-    # =========================================================
-    # ✨ 核心修复：基于实际交易日历构建 T+1 映射
-    # =========================================================
-    trade_map = {}  # {交易日期: 模型日期}
-    for i in range(len(model_dates)):
-        model_date = model_dates[i]
-        
-        # 1. 如果不是最后一个模型日期，T+1 交易日就是列表中的【下一个模型日期】
-        if i < len(model_dates) - 1:
-            trade_date = model_dates[i + 1]
-            
-        # 2. 如果是最后一个模型日期
+                with open(Config.LOCAL_MODEL_CACHE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                logger.info("模型已缓存到本地")
+            except Exception as e:
+                logger.warning(f"缓存写入失败: {e}")
+            return data
         else:
-            # 如果今天(today_cn)不在模型列表中，且今天日期大于最后模型日，则将今天作为 T+1
-            if today_cn not in model_dates and today_cn > model_date:
-                trade_date = today_cn
+            logger.warning("GitHub 获取失败，尝试本地缓存")
+            if os.path.exists(Config.LOCAL_MODEL_CACHE):
+                try:
+                    with open(Config.LOCAL_MODEL_CACHE, 'r', encoding='utf-8') as f:
+                        cached = json.load(f)
+                    logger.info("使用本地缓存模型（可能不是最新）")
+                    return cached
+                except Exception as e:
+                    logger.error(f"读取缓存失败: {e}")
             else:
-                # 兜底情况（例如今天已包含在模型中，说明最新模型的 T+1 在未来）
-                # 采用自然日+1，后续循环会被「日期过滤逻辑」安全跳过或作为未发生交易处理
-                model_dt = datetime.strptime(model_date, "%Y-%m-%d")
-                trade_date = (model_dt + timedelta(days=1)).strftime("%Y-%m-%d")
-                
-        trade_map[trade_date] = model_date
-    # =========================================================
-    
-    logger.info(f"交易日映射(交易日期->模型日期): {trade_map}")
+                logger.error("无可用模型数据")
+            return None
 
-    # 按交易日期排序执行
-    for trade_date in sorted(trade_map.keys()):
-        model_date = trade_map[trade_date]
-        
-        # 检查是否在回测区间内，或等于今天（中国时间）
-        if not (SimConfig.START_DATE <= trade_date <= SimConfig.END_DATE) and trade_date != today_cn:
-            logger.debug(f"交易日期 {trade_date} 超出回测区间且不是今天，跳过")
-            continue
-        
-        logger.info(f"========== 模型[{model_date}] -> 交易[{trade_date}] ==========")
-        
-        # 1. 加载模型（用前一日模型）
-        model_file = os.path.join(SimConfig.MODEL_HISTORY_DIR, 
-                                  f"{SimConfig.MODEL_NAME_PREFIX}_{model_date}.json")
-        if not os.path.exists(model_file):
-            logger.error(f"模型文件不存在: {model_file}")
-            continue
+    @staticmethod
+    def parse_model(data: Dict) -> Tuple[List[Dict], float]:
+        if data.get('运行状态') != '成功':
+            logger.error("模型运行状态非成功")
+            return [], 0.0
+        result = data.get('结果', {})
+        config_list = result.get('最优投资组合配置', {}).get('配置详情', [])
+        if not config_list:
+            logger.error("模型配置详情为空")
+            return [], 0.0
+        target = []
+        for item in config_list:
+            raw_code = item.get('代码', '')
+            code = ModelLoader._convert_code(raw_code)  # ← 唯一修改点
+            logger.info(f"代码格式转换: {raw_code} -> {code}")
             
-        with open(model_file, 'r', encoding='utf-8') as f:
-            targets, pf = MarketData.parse_sirius_model(json.load(f))
+            name = item.get('名称', '')
+            weight_str = item.get('最优权重(%)', '0')
+            weight = float(str(weight_str).replace('%', '')) / 100.0
+            ref_price = item.get('最近一日价格')
+            if ref_price is None:
+                logger.warning(f"股票 {code} 缺少参考价格，跳过")
+                continue
+            if weight <= 0:
+                continue
+            target.append({
+                'code': code,
+                'name': name,
+                'weight': weight,
+                'ref_price': float(ref_price)
+            })
+        risk_info = result.get('风控因子信息', {})
+        position_factor = float(risk_info.get('综合建议仓位因子', 1.0))
+        position_factor = max(0.0, min(1.0, position_factor))
+        logger.info(f"解析到 {len(target)} 个目标持仓，仓位因子: {position_factor:.2f}")
+        return target, position_factor
 
-        # 2. 准备昨收价（模型中的 ref_price 是 model_date 的收盘价）
-        # 对于 trade_date 来说，这就是昨收价
-        pre_closes = {t['code']: t['ref_price'] for t in targets}
+# ========================= 真实 QMT 客户端（增强版） =========================
+class QMTClient:
+    def __init__(self):
+        self.xt_trader = None
+        self.account = None
+        self.connected = False
 
-        # 3. 运行仿真（在 trade_date 这一天交易）
-        executor.simulate_day(trade_date, targets, pf, pre_closes)
+    def connect(self) -> bool:
+        """连接 MiniQMT 并登录账户"""
+        if not XT_AVAILABLE:
+            logger.error("xtquant 库未安装，无法连接 QMT")
+            return False
+        try:
+            self.xt_trader = XtQuantTrader(Config.QMT_PATH, 1)
+            self.xt_trader.start()
+            self.account = StockAccount(Config.ACCOUNT_ID)
+            connect_result = self.xt_trader.connect()
+            if connect_result != 0:
+                logger.error(f"QMT 连接失败，错误码: {connect_result}")
+                return False
+            subscribe_result = self.xt_trader.subscribe(self.account)
+            if subscribe_result != 0:
+                logger.error(f"账户订阅失败，错误码: {subscribe_result}")
+                return False
+            self.connected = True
+            logger.info("QMT 连接成功")
+            return True
+        except Exception as e:
+            logger.error(f"连接 QMT 异常: {e}")
+            return False
+
+    def reconnect(self) -> bool:
+        """尝试重连"""
+        logger.info("尝试重连 QMT...")
+        self.connected = False
+        return self.connect()
+
+    def get_positions(self) -> Dict[str, Dict]:
+        if not self.connected:
+            logger.error("未连接到 QMT")
+            return {}
+        positions = {}
+        try:
+            position_list = self.xt_trader.query_stock_positions(self.account)
+            for pos in position_list:
+                if pos.m_nVolume <= 0:
+                    continue
+                code = pos.m_strStockCode
+                positions[code] = {
+                    'volume': pos.m_nVolume,
+                    'can_sell': pos.m_nCanUseVolume,
+                    'avg_price': pos.m_dAvgPrice,
+                }
+            logger.info(f"获取到 {len(positions)} 个持仓")
+        except Exception as e:
+            logger.error(f"获取持仓失败: {e}")
+        return positions
+
+    def get_account_info(self) -> Dict:
+        if not self.connected:
+            return {}
+        try:
+            asset = self.xt_trader.query_stock_asset(self.account)
+            return {
+                'total_asset': asset.m_dTotalAsset,
+                'available_cash': asset.m_dAvailable
+            }
+        except Exception as e:
+            logger.error(f"获取账户信息失败: {e}")
+            return {}
+
+    def get_realtime_price(self, code: str) -> Optional[float]:
+        try:
+            tick = get_full_tick([code])
+            if code in tick:
+                return tick[code]['lastPrice']
+            else:
+                data = get_market_data([code], period='1d', count=1)
+                if data is not None and not data.empty:
+                    return data['close'].iloc[-1]
+        except Exception as e:
+            logger.error(f"获取 {code} 行情失败: {e}")
+        return None
+
+    def get_pre_close(self, code: str) -> Optional[float]:
+        """获取前一交易日收盘价"""
+        try:
+            tick = get_full_tick([code])
+            if code in tick and 'lastClose' in tick[code]:
+                return tick[code]['lastClose']
+            data = get_market_data([code], period='1d', count=2)
+            if data is not None and not data.empty and len(data) >= 2:
+                return data['close'].iloc[-2]
+        except Exception as e:
+            logger.error(f"获取 {code} 前收价失败: {e}")
+        return None
+
+    def get_buy_price_constrained(self, code: str, ref_price: float) -> Optional[float]:
+        """买入价 ≤ 基准价，返回委托价格"""
+        if ref_price <= 0:
+            return None
+        real = self.get_realtime_price(code)
+        if real is None:
+            return ref_price
+        return min(real, ref_price)
+
+    def get_sell_price_constrained(self, code: str, pre_close: float) -> Optional[float]:
+        """正常时段卖出价 ≥ 昨收，返回委托价格"""
+        if pre_close <= 0:
+            return None
+        real = self.get_realtime_price(code)
+        if real is None:
+            return pre_close
+        return max(real, pre_close)
+
+    def get_sell_price_unconstrained(self, code: str, pre_close: float = None) -> Optional[float]:
+        """
+        尾盘强制卖出：获取一个既能成交又不至于过低的价格。
+        优先使用买一价（bid1），并确保不低于保护价（pre_close * FORCE_SELL_PRICE_RATIO）。
+        若买一价无效，则使用最新价。
+        """
+        try:
+            if pre_close is None:
+                pre_close = self.get_pre_close(code)
+            if pre_close is None:
+                logger.warning(f"{code} 无法获取昨收，无法设置价格下限")
+                return None
+            protect_price = pre_close * getattr(Config, 'FORCE_SELL_PRICE_RATIO', 0.98)
+
+            tick = get_full_tick([code])
+            if code not in tick:
+                return protect_price
+
+            bid1 = tick[code].get('bidPrice', [0])[0] if 'bidPrice' in tick[code] else 0
+            last = tick[code]['lastPrice']
+
+            # 优先使用买一价，若无效则用最新价
+            if bid1 > 0:
+                best_price = bid1
+            elif last > 0:
+                best_price = last
+            else:
+                best_price = protect_price
+
+            final_price = max(best_price, protect_price)
+            logger.debug(f"{code} 强制卖出: 买一{bid1}, 最新{last}, 保护价{protect_price:.2f}, 最终{final_price:.2f}")
+            return final_price
+        except Exception as e:
+            logger.error(f"获取 {code} 强制卖出价失败: {e}")
+            return None
+
+    def is_limit_up_down(self, code: str, price: float, direction: str) -> bool:
+        try:
+            tick = get_full_tick([code])
+            if code not in tick:
+                return False
+            if direction == 'buy':
+                return price >= tick[code]['upStopPrice']
+            else:
+                return price <= tick[code]['downStopPrice']
+        except:
+            return False
+
+    def place_order(self, code: str, order_type: str, volume: int, price: float) -> bool:
+        """真实下单，带断线重连"""
+        if not Config.REAL_TRADE:
+            logger.info(f"[模拟模式] 跳过真实下单: {order_type} {code} {volume}股 @ {price:.2f}")
+            return True
+        if not self.connected:
+            # 尝试重连一次
+            if not self.reconnect():
+                logger.error("未连接到 QMT 且重连失败，无法下单")
+                return False
+        if volume <= 0:
+            return False
+        if volume % 100 != 0:
+            logger.warning(f"委托股数 {volume} 不是100的倍数，自动调整为 {volume // 100 * 100}")
+            volume = volume // 100 * 100
+            if volume == 0:
+                return False
+        if self.is_limit_up_down(code, price, order_type):
+            logger.warning(f"{code} 已{'涨停' if order_type=='buy' else '跌停'}，放弃下单")
+            return False
+        if order_type == 'buy':
+            order_id = self.xt_trader.order_stock_async(
+                self.account, code, xtconstant.STOCK_BUY, volume, price, 'limit'
+            )
+        else:
+            order_id = self.xt_trader.order_stock_async(
+                self.account, code, xtconstant.STOCK_SELL, volume, price, 'limit'
+            )
+        if order_id > 0:
+            logger.info(f"委托成功: {order_type} {code} {volume}股 @ {price:.2f}，订单号 {order_id}")
+            return True
+        else:
+            logger.error(f"委托失败: {order_type} {code} {volume}股 @ {price:.2f}，错误码 {order_id}")
+            return False
+
+
+    def cancel_order(self, order_id: int) -> bool:
+        """撤销指定订单"""
+        if not self.connected:
+            return False
+        try:
+            result = self.xt_trader.cancel_order(self.account, order_id)
+            if result == 0:
+                logger.info(f"撤单成功: 订单号 {order_id}")
+                return True
+            else:
+                logger.warning(f"撤单失败: 订单号 {order_id}, 错误码 {result}")
+                return False
+        except Exception as e:
+            logger.error(f"撤单异常: {e}")
+            return False
+
+    def get_pending_sell_orders(self, code: str = None) -> List:
+        """
+        获取所有未成交（状态为未报、已报、部分成交）的卖出委托。
+        若指定 code，则只返回该股票的委托。
+        """
+        if not self.connected:
+            return []
+        try:
+            orders = self.xt_trader.query_stock_orders(self.account)
+            pending = []
+            for order in orders:
+                # 过滤方向为卖出，且状态为未成交或部分成交
+                if order.m_nOrderType != xtconstant.STOCK_SELL:
+                    continue
+                # 状态码参考：xtconstant.ORDER_UNREPORTED, ORDER_REPORTED, ORDER_PARTIAL 等
+                if order.m_nOrderStatus in (xtconstant.ORDER_UNREPORTED, xtconstant.ORDER_REPORTED, xtconstant.ORDER_PARTIAL):
+                    if code is None or order.m_strStockCode == code:
+                        pending.append(order)
+            return pending
+        except Exception as e:
+            logger.error(f"查询未成交卖出委托失败: {e}")
+            return []
+
+
+
+# ========================= 交易信号生成器 =========================
+class TradeSignalGenerator:
+    @staticmethod
+    def calculate_target_volume(total_asset: float, target_weight: float, price: float) -> int:
+        target_value = total_asset * target_weight
+        target_volume = int(target_value / price / 100) * 100
+        return max(0, target_volume)
+
+    @staticmethod
+    def generate_orders(current_positions: Dict, target_holdings: List[Dict],
+                    total_asset: float, position_factor: float,
+                    available_cash: float, qmt_client) -> Tuple[List[Dict], List[Dict]]:
+        """
+        返回 (buy_orders, sell_orders)
+        buy_orders: [{"code", "volume", "price", "name"}]
+        sell_orders: [{"code", "volume", "price", "name", "pre_close"}]
+        """
+        # 引入资金使用比例，例如 0.5 表示只用一半资金
+        trade_ratio = getattr(Config, 'TRADE_RATIO', 1.0)
+        effective_total_asset = total_asset * trade_ratio
+        risk_adjusted_asset = effective_total_asset * position_factor   # 风控后资产
+        effective_available_cash = available_cash * trade_ratio
+
+        # 构建目标字典（买入价受约束）
+        target_dict = {}
+        for h in target_holdings:
+            code = h['code']
+            effective_weight = h['weight'] * position_factor
+            buy_price = qmt_client.get_buy_price_constrained(code, h['ref_price'])
+            if buy_price is None:
+                logger.warning(f"{code} 无法获取有效买入价格，跳过")
+                continue
+            # 使用 effective_total_asset 计算目标股数
+            target_vol = TradeSignalGenerator.calculate_target_volume(risk_adjusted_asset, effective_weight, buy_price)
+            if target_vol > 0:
+                target_dict[code] = {
+                    'volume': target_vol,
+                    'price': buy_price,
+                    'name': h['name'],
+                    'ref_price': h['ref_price']
+                }
+
+        # 当前持仓字典
+        current_dict = {}
+        for code, pos in current_positions.items():
+            current_dict[code] = {
+                'volume': pos['volume'],
+                'can_sell': pos['can_sell'],
+                'avg_price': pos['avg_price']
+            }
+
+        # 卖出指令（正常时段，价格 ≥ 昨收）
+        sell_orders = []
+        for code, cur in current_dict.items():
+            target_vol = target_dict.get(code, {}).get('volume', 0)
+            if cur['volume'] > target_vol:
+                sell_vol = min(cur['can_sell'], cur['volume'] - target_vol)
+                if sell_vol > 0:
+                    pre_close = qmt_client.get_pre_close(code)
+                    if pre_close is None:
+                        logger.warning(f"{code} 无法获取昨日收盘价，跳过卖出")
+                        continue
+                    sell_price = qmt_client.get_sell_price_constrained(code, pre_close)
+                    if sell_price is None:
+                        continue
+                    sell_orders.append({
+                        'code': code,
+                        'volume': sell_vol,
+                        'price': sell_price,
+                        'name': code,
+                        'pre_close': pre_close
+                    })
+
+        # 买入指令
+        buy_orders = []
+        estimated_cost = 0.0
+        for code, target in target_dict.items():
+            cur_vol = current_dict.get(code, {}).get('volume', 0)
+            if target['volume'] > cur_vol:
+                buy_vol = target['volume'] - cur_vol
+                buy_vol = (buy_vol // 100) * 100
+                if buy_vol > 0:
+                    buy_orders.append({
+                        'code': code,
+                        'volume': buy_vol,
+                        'price': target['price'],
+                        'name': target['name']
+                    })
+                    estimated_cost += buy_vol * target['price']
+
+        # 资金不足时缩减买入量，使用 effective_available_cash
+        if estimated_cost > effective_available_cash + 1e-6:
+            ratio = effective_available_cash / estimated_cost
+            logger.warning(f"资金不足，缩减买入量，比例 {ratio:.2f}")
+            for order in buy_orders:
+                order['volume'] = int(order['volume'] * ratio / 100) * 100
+            buy_orders = [o for o in buy_orders if o['volume'] > 0]
+
+        return buy_orders, sell_orders
+
+# ========================= 订单执行器 =========================
+class OrderExecutor:
+    def __init__(self):
+        self.today_trades = []
+
+    def execute_orders(self, buy_orders: List[Dict], sell_orders: List[Dict], qmt_client) -> Tuple[List[Dict], List[Dict]]:
+        # 先卖后买
+        executed_sells = []
+        for order in sell_orders:
+            success = qmt_client.place_order(order['code'], 'sell', order['volume'], order['price'])
+            if success:
+                trade_record = {
+                    '时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    '股票代码': order['code'],
+                    '股票名称': order.get('name', order['code']),
+                    '方向': '卖出',
+                    '委托数量': order['volume'],
+                    '成交价': order['price'],
+                    '成交金额': order['volume'] * order['price'],
+                }
+                executed_sells.append(trade_record)
+                self.today_trades.append(trade_record)
+            time.sleep(Config.ORDER_INTERVAL)
+
+        executed_buys = []
+        for order in buy_orders:
+            success = qmt_client.place_order(order['code'], 'buy', order['volume'], order['price'])
+            if success:
+                trade_record = {
+                    '时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    '股票代码': order['code'],
+                    '股票名称': order.get('name', order['code']),
+                    '方向': '买入',
+                    '委托数量': order['volume'],
+                    '成交价': order['price'],
+                    '成交金额': order['volume'] * order['price'],
+                }
+                executed_buys.append(trade_record)
+                self.today_trades.append(trade_record)
+            time.sleep(Config.ORDER_INTERVAL)
+
+        return executed_buys, executed_sells
+
+# ========================= 业绩记录模块 =========================
+class PerformanceEvaluator:
+    @staticmethod
+    def save_trades(trades: List[Dict]):
+        if not trades:
+            return
+        df_new = pd.DataFrame(trades)
+        if os.path.exists(Config.TRADE_RECORD_PATH):
+            df_old = pd.read_excel(Config.TRADE_RECORD_PATH)
+            df_combined = pd.concat([df_old, df_new], ignore_index=True)
+        else:
+            df_combined = df_new
+        os.makedirs(os.path.dirname(Config.TRADE_RECORD_PATH), exist_ok=True)
+        df_combined.to_excel(Config.TRADE_RECORD_PATH, index=False)
+        logger.info(f"保存 {len(trades)} 条交易记录至 {Config.TRADE_RECORD_PATH}")
+
+    @staticmethod
+    def save_position_snapshot(positions: Dict, total_asset: float):
+        records = []
+        for code, pos in positions.items():
+            records.append({
+                '日期': datetime.now().strftime('%Y-%m-%d'),
+                '股票代码': code,
+                '持股数量': pos['volume'],
+                '可卖数量': pos.get('can_sell', pos['volume']),
+                '成本价': pos['avg_price'],
+            })
+        records.append({
+            '日期': datetime.now().strftime('%Y-%m-%d'),
+            '股票代码': 'TOTAL',
+            '总资产': total_asset,
+        })
+        df_new = pd.DataFrame(records)
+        if os.path.exists(Config.POSITION_SNAPSHOT_PATH):
+            df_old = pd.read_excel(Config.POSITION_SNAPSHOT_PATH)
+            df_combined = pd.concat([df_old, df_new], ignore_index=True)
+        else:
+            df_combined = df_new
+        os.makedirs(os.path.dirname(Config.POSITION_SNAPSHOT_PATH), exist_ok=True)
+        df_combined.to_excel(Config.POSITION_SNAPSHOT_PATH, index=False)
+        logger.info("保存持仓快照")
+
+# ========================= 主机器人 =========================
+class SIRIUSBot:
+    def __init__(self):
+        self.model_loader = ModelLoader()
+        self.qmt = QMTClient()
+        self.signal_gen = TradeSignalGenerator()
+        self.executor = OrderExecutor()
+        self.evaluator = PerformanceEvaluator()
+        # 缓存当日模型数据，供尾盘强制卖出复用
+        self.cached_model_data = None
+        self.cached_position_factor = None
+        self.cached_target_holdings = None
+
+    def run_once(self):
+        logger.info("========== SIRIUS Bot 开始运行 ==========")
+        # 1. 加载模型
+        model_data = self.model_loader.load_latest_model()
+        if not model_data:
+            logger.error("模型加载失败，退出")
+            return
+        target_holdings, position_factor = self.model_loader.parse_model(model_data)
+        if not target_holdings:
+            logger.error("无有效目标持仓，退出")
+            return
+
+        # 缓存模型数据供尾盘使用
+        self.cached_model_data = model_data
+        self.cached_target_holdings = target_holdings
+        self.cached_position_factor = position_factor
+
+        # 2. 获取账户信息
+        account_info = self.qmt.get_account_info()
+        if not account_info:
+            logger.error("获取账户信息失败，退出")
+            return
+        total_asset = account_info['total_asset']
+        available_cash = account_info['available_cash']
+        logger.info(f"总资产: {total_asset:.2f}, 可用资金: {available_cash:.2f}")
+
+        # 3. 获取当前持仓
+        current_positions = self.qmt.get_positions()
+
+        # 4. 生成买卖指令
+        buy_orders, sell_orders = self.signal_gen.generate_orders(
+            current_positions, target_holdings, total_asset, position_factor, available_cash, self.qmt
+        )
+        logger.info(f"生成买入指令 {len(buy_orders)} 条，卖出指令 {len(sell_orders)} 条")
+        for o in buy_orders:
+            logger.info(f"  买入 {o['code']} {o['volume']}股 @ {o['price']:.2f}")
+        for o in sell_orders:
+            logger.info(f"  卖出 {o['code']} {o['volume']}股 @ {o['price']:.2f} (约束≥昨收{o.get('pre_close',0):.2f})")
+
+        if not buy_orders and not sell_orders:
+            logger.info("无调仓需要，结束")
+            return
+
+        # 5. 执行交易
+        executed_buys, executed_sells = self.executor.execute_orders(buy_orders, sell_orders, self.qmt)
+        logger.info(f"执行完成: 买入成交 {len(executed_buys)} 笔，卖出成交 {len(executed_sells)} 笔")
+
+        # 6. 记录交易
+        if self.executor.today_trades:
+            self.evaluator.save_trades(self.executor.today_trades)
+
+        # 7. 收盘后任务（保存快照）
+        self.after_close()
+        logger.info("========== 本次运行结束 ==========")
+
+    def after_close(self):
+        """收盘后任务：保存持仓快照（带时间校验）"""
+        now = datetime.now().time()
+        close_time = datetime.strptime("15:00", "%H:%M").time()
         
-        # 4. 累计交易记录
-        executor.all_trades.extend(executor.today_trades)
-        executor.today_trades = []
+        # 方案B核心：未收盘时跳过，不报错
+        if now < close_time:
+            logger.info(f"当前 {now.strftime('%H:%M')} 未收盘，跳过持仓快照")
+            return  # 静默退出，不执行保存
         
-        # 5. 保存每日快照
-        total_asset = executor.save_daily_snapshot(trade_date)
-        logger.info(f"Day End Asset: {total_asset:.2f}")
+        # 真正收盘后，执行保存
+        positions = self.qmt.get_positions()
+        account_info = self.qmt.get_account_info()
+        total_asset = account_info.get('total_asset', 0) if account_info else 0
+        
+        self.evaluator.save_position_snapshot(positions, total_asset)
+        logger.info("收盘后任务完成：持仓快照已保存")
 
-    # 6. 导出结果
-    executor.export_to_excel()
-    logger.info(f"🎉 回测完成！结果保存至: {SimConfig.TRADE_RECORD_FILE}")
+    def force_sell_at_close(self):
+        """
+        尾盘强制卖出：撤销所有未成交卖出委托 → 重新计算需要卖出的股票 → 强制卖出（无价格下限）
+        """
+        logger.info("========== 尾盘强制卖出开始 ==========")
 
-    # 7. 打印统计
-    _print_statistics(executor, account)
+        # 1. 撤销所有未成交的卖出委托（避免重复委托）
+        pending_orders = self.qmt.get_pending_sell_orders()
+        if pending_orders:
+            logger.info(f"发现 {len(pending_orders)} 笔未成交卖出委托，开始撤销...")
+            for order in pending_orders:
+                self.qmt.cancel_order(order.m_nOrderID)
+                time.sleep(0.5)   # 稍等撤单完成
+            # 等待撤单生效（简单延迟）
+            time.sleep(2)
+        else:
+            logger.info("无未成交卖出委托")
 
+        # 2. 使用缓存的模型数据，若无则重新加载
+        if self.cached_target_holdings is None:
+            logger.info("无缓存模型数据，重新加载模型")
+            model_data = self.model_loader.load_latest_model()
+            if not model_data:
+                logger.error("强制卖出：模型加载失败，无法计算需要卖出的股票")
+                return
+            target_holdings, position_factor = self.model_loader.parse_model(model_data)
+        else:
+            target_holdings = self.cached_target_holdings
+            position_factor = self.cached_position_factor
 
-def _print_statistics(executor, account):
-    """打印回测统计"""
-    if not executor.all_trades:
-        return
-    
-    df = pd.DataFrame(executor.all_trades)
-    buy_count = len(df[df['side'] == 'buy'])
-    sell_count = len(df[df['side'] == 'sell'])
-    
-    # 计算最终收益
-    final_snapshots = [s for s in executor.daily_snapshots if s['code'] == 'TOTAL']
-    if final_snapshots:
-        final_asset = final_snapshots[-1]['market_value']
-        total_return = (final_asset / SimConfig.INITIAL_CASH - 1) * 100
-        logger.info(f"\n{'='*50}")
-        logger.info(f"回测统计:")
-        logger.info(f"  初始资金: {SimConfig.INITIAL_CASH:.2f}")
-        logger.info(f"  最终资产: {final_asset:.2f}")
-        logger.info(f"  总收益率: {total_return:.2f}%")
-        logger.info(f"  买入次数: {buy_count}")
-        logger.info(f"  卖出次数: {sell_count}")
-        logger.info(f"{'='*50}")
+        if not target_holdings:
+            logger.error("强制卖出：无有效目标持仓，无法计算")
+            return
 
+        # 3. 获取最新账户信息和持仓
+        account_info = self.qmt.get_account_info()
+        if not account_info:
+            logger.error("强制卖出：获取账户信息失败")
+            return
+        total_asset = account_info['total_asset']
+        available_cash = account_info['available_cash']
+
+        current_positions = self.qmt.get_positions()
+
+        # 4. 重新生成卖出指令（仅卖出部分，忽略买入）
+        _, sell_orders = self.signal_gen.generate_orders(
+            current_positions, target_holdings, total_asset, position_factor, available_cash, self.qmt
+        )
+
+        if not sell_orders:
+            logger.info("尾盘强制卖出：无需要卖出的股票")
+            return
+
+        logger.info(f"尾盘需要强制卖出 {len(sell_orders)} 只股票")
+        force_trades = []
+
+        for order in sell_orders:
+            code = order['code']
+            required_vol = order['volume']   # 需要卖出的总股数（基于模型目标）
+
+            # 再次获取最新可卖数量（撤单后持仓可能已变化）
+            pos = self.qmt.get_positions().get(code, {})
+            cur_vol = pos.get('volume', 0)
+            can_sell = pos.get('can_sell', 0)
+            if cur_vol == 0 or can_sell == 0:
+                logger.info(f"{code} 已无持仓或无可卖股份，跳过")
+                continue
+
+            # 实际需要卖出的股数 = min(目标卖出数, 当前可卖数)
+            sell_vol = min(can_sell, required_vol)
+            if sell_vol <= 0:
+                continue
+
+            # 获取当前最优卖出价（买一价或最新价，不设下限）
+            price = self.qmt.get_sell_price_unconstrained(code, order.get('pre_close'))
+            if price is None or price <= 0:
+                logger.warning(f"{code} 无法获取有效市价，放弃强制卖出")
+                continue
+
+            # 检查跌停（如果跌停，无法卖出）
+            if self.qmt.is_limit_up_down(code, price, 'sell'):
+                logger.warning(f"{code} 已跌停，无法卖出")
+                continue
+
+            logger.info(f"尾盘强制卖出 {code} {sell_vol}股 @ {price:.2f} (无价格下限)")
+            success = self.qmt.place_order(code, 'sell', sell_vol, price)
+            if success:
+                force_trades.append({
+                    '时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    '股票代码': code,
+                    '股票名称': order.get('name', code),
+                    '方向': '强制卖出',
+                    '委托数量': sell_vol,
+                    '成交价': price,
+                    '成交金额': sell_vol * price,
+                })
+            time.sleep(Config.ORDER_INTERVAL)
+
+        # 5. 保存强制卖出记录
+        if force_trades:
+            self.evaluator.save_trades(force_trades)
+            self.executor.today_trades.extend(force_trades)
+
+        # 6. 最后再检查一次是否还有未成交委托（如果仍有，再次撤销，确保无残留）
+        final_pending = self.qmt.get_pending_sell_orders()
+        if final_pending:
+            logger.warning(f"仍有 {len(final_pending)} 笔未成交卖出委托，再次撤销")
+            for order in final_pending:
+                self.qmt.cancel_order(order.m_nOrderID)
+                time.sleep(0.5)
+
+        logger.info("========== 尾盘强制卖出结束 ==========")
+
+# ========================= 辅助函数 =========================
+def is_trading_time() -> bool:
+    """判断当前是否在交易时段（9:30-11:30, 13:00-15:00）"""
+    now = datetime.now()
+    if now.weekday() >= 5:
+        return False
+    current_time = now.time()
+    morning_start = datetime.strptime("09:30", "%H:%M").time()
+    morning_end = datetime.strptime("11:30", "%H:%M").time()
+    afternoon_start = datetime.strptime("13:00", "%H:%M").time()
+    afternoon_end = datetime.strptime("15:00", "%H:%M").time()
+    if (morning_start <= current_time <= morning_end) or (afternoon_start <= current_time <= afternoon_end):
+        return True
+    return False
+
+# ========================= 主入口 =========================
 if __name__ == "__main__":
-    run_strict_backtest()
+    parser = argparse.ArgumentParser(description='SIRIUS T+1 自动交易机器人（尾盘强制卖出版）')
+    parser.add_argument('--mode', choices=['once', 'daemon'], default='once',
+                        help='运行模式: once-执行一次调仓后退出; daemon-循环等待交易时间执行')
+    parser.add_argument('--snapshot-only', action='store_true',  # 新增
+                        help='仅执行收盘快照，不交易（用于收盘后调用）')
+    args = parser.parse_args()
+
+    bot = SIRIUSBot()
+    if not bot.qmt.connect():
+        logger.error("QMT 连接失败，程序退出")
+        sys.exit(1)
+
+    if args.mode == 'once':
+        if args.snapshot_only:
+            # 纯快照模式：直接执行收盘任务
+            bot.after_close()
+        else:
+            # 正常交易模式
+            bot.run_once()
+            # # 单次模式下，若当前时间接近尾盘，也可尝试强制卖出（可选）
+            # now = datetime.now()
+            # if now.hour >= Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE:
+            #     logger.info("单次运行且当前时间已到尾盘，执行强制卖出")
+            #     bot.force_sell_at_close()
+    else:
+        last_trade_date = None
+        last_force_sell_date = None
+        while True:
+            now = datetime.now()
+            today_str = now.strftime("%Y-%m-%d")
+            # 早盘调仓（10:00 之后执行一次）
+            if is_trading_time() and last_trade_date != today_str and now.hour >= 10:
+                logger.info(f"进入交易时间，开始今日调仓: {today_str}")
+                bot.run_once()
+                last_trade_date = today_str
+            # # 尾盘强制卖出（14:50 之后执行一次）
+            # if (now.hour >= Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE
+            #         and last_force_sell_date != today_str):
+            #     # 确保已经执行过调仓（即有缓存模型数据），否则先调仓再强制卖出
+            #     if last_trade_date == today_str:
+            #         logger.info(f"尾盘时间到，执行强制卖出: {today_str}")
+            #         bot.force_sell_at_close()
+            #         last_force_sell_date = today_str
+            #     else:
+            #         logger.info("今日尚未调仓，先执行调仓再强制卖出")
+            #         bot.run_once()
+            #         last_trade_date = today_str
+            #         bot.force_sell_at_close()
+            #         last_force_sell_date = today_str
+            time.sleep(30)
