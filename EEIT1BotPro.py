@@ -1,3 +1,4 @@
+# @title SIRIUS T1 Real Dynamic
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -39,8 +40,8 @@ except ImportError:
 # ========================= 配置部分 =========================
 class Config:
     """真实交易配置（请根据实际情况修改）"""
-    QMT_PATH = r"D:\国金证券QMT\userdata_mini"
-    ACCOUNT_ID = "8888888888"
+    QMT_PATH = r"E:\国金证券QMT交易端\userdata_mini"
+    ACCOUNT_ID = ""
 
     MODEL_URL = "https://raw.githubusercontent.com/digital-era/AIPEQModel/main/流入模型_New.json"
     LOCAL_MODEL_CACHE = "流入模型_New.json.cache"
@@ -57,7 +58,7 @@ class Config:
     SLIPPAGE = 0.002                # 滑点容忍度（0.2%）
     PRICE_TOLERANCE = 0.005 
     ORDER_INTERVAL = 1.0
-    REAL_TRADE = True
+    REAL_TRADE = False
     DEBUG = True
 
     FORCE_SELL_HOUR = 14
@@ -70,8 +71,10 @@ class Config:
     INTRADAY_SCAN_INTERVAL = 60
     INTRADAY_COOLDOWN_SEC = 300     # 同一股票动态交易冷却时间（秒）
 
-    HTTP_PROXY = os.environ.get('HTTP_PROXY', '')
-    HTTPS_PROXY = os.environ.get('HTTPS_PROXY', '')
+    #HTTP_PROXY = os.environ.get('HTTP_PROXY', '')
+    #HTTPS_PROXY = os.environ.get('HTTPS_PROXY', '')
+    HTTP_PROXY = 'http://127.0.0.1:7890'
+    HTTPS_PROXY = 'http://127.0.0.1:7890'
 
 PROXIES = {}
 if Config.HTTP_PROXY:
@@ -247,18 +250,17 @@ class QMTClient:
             return positions
 
     def get_account_info(self) -> Dict:
-        with self.lock:
-            if not self.connected:
-                return {}
-            try:
-                asset = self.xt_trader.query_stock_asset(self.account)
-                return {
-                    'total_asset': asset.m_dTotalAsset,
-                    'available_cash': asset.m_dAvailable
-                }
-            except Exception as e:
-                logger.error(f"获取账户信息失败: {e}")
-                return {}
+        if not self.connected:
+            return {}
+        try:
+            asset = self.xt_trader.query_stock_asset(self.account)
+            return {
+                "total_asset": asset.m_dTotalAsset,
+                "available_cash": asset.m_dCash
+            }
+        except Exception as e:
+            logger.error(f"获取账户信息失败: {e}")
+            return {}
 
     def get_realtime_price(self, code: str) -> Optional[float]:
         with self.lock:
