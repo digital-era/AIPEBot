@@ -191,6 +191,7 @@ class QMTClient:
         self.account = None
         self.connected = False
         self.lock = threading.RLock()
+        self.code_to_name = {} # 新增名称映射缓存
 
     def connect(self) -> bool:
         if not XT_AVAILABLE:
@@ -537,6 +538,7 @@ class PerformanceEvaluator:
             records.append({
                 '日期': datetime.now().strftime('%Y-%m-%d'),
                 '股票代码': code,
+                '股票名称': code_to_name.get(code, "未知"), # 新增字段
                 '持股数量': pos['volume'],
                 '可卖数量': pos.get('can_sell', pos['volume']),
                 '成本价': pos['avg_price'],
@@ -582,6 +584,9 @@ class SIRIUSBot:
             logger.error("模型加载失败，无法继续")
             return
         target_holdings, position_factor = self.model_loader.parse_model(model_data)
+        if target_holdings:
+            self.code_to_name = {h['code']: h['name'] for h in target_holdings}
+            self.cached_target_holdings = target_holdings
         if not target_holdings:
             logger.error("无有效目标持仓，无法继续")
             return
@@ -755,7 +760,7 @@ class SIRIUSBot:
                     force_sell_list.append({
                         'code': code,
                         'volume': sell_vol,
-                        'name': code,
+                        'name': self.code_to_name.get(code, code), # 修复：从映射表取名
                         'pre_close': self.qmt.get_pre_close(code)
                     })
 
