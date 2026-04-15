@@ -679,11 +679,22 @@ class SIRIUSBot:
         logger.info("========== 本次运行结束 ==========")
 
     def after_close(self):
+        """收盘后任务：保存持仓快照（带时间校验）"""
+        now = datetime.now().time()
+        close_time = datetime.strptime("15:00", "%H:%M").time()
+        
+        # 方案B核心：未收盘时跳过，不报错
+        if now < close_time:
+            logger.info(f"当前 {now.strftime('%H:%M')} 未收盘，跳过持仓快照")
+            return  # 静默退出，不执行保存
+        
+        # 真正收盘后，执行保存
         positions = self.qmt.get_positions()
         account_info = self.qmt.get_account_info()
         total_asset = account_info.get('total_asset', 0) if account_info else 0
+        
         self.evaluator.save_position_snapshot(positions, total_asset)
-        logger.info("收盘后任务完成")
+        logger.info("收盘后任务完成：持仓快照已保存")
 
     def force_sell_at_close(self):
         """
@@ -818,6 +829,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='SIRIUS T+1 自动交易机器人（尾盘强制卖出版）')
     parser.add_argument('--mode', choices=['once', 'daemon'], default='once',
                         help='运行模式: once-执行一次调仓后退出; daemon-循环等待交易时间执行')
+    parser.add_argument('--snapshot-only', action='store_true',  # 新增
+                        help='仅执行收盘快照，不交易（用于收盘后调用）')
     args = parser.parse_args()
 
     bot = SIRIUSBot()
@@ -826,12 +839,17 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if args.mode == 'once':
-        bot.run_once()
-        # # 单次模式下，若当前时间接近尾盘，也可尝试强制卖出（可选）
-        # now = datetime.now()
-        # if now.hour >= Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE:
-        #     logger.info("单次运行且当前时间已到尾盘，执行强制卖出")
-        #     bot.force_sell_at_close()
+        if args.snapshot_only:
+            # 纯快照模式：直接执行收盘任务
+            bot.after_close()
+        else:
+            # 正常交易模式
+            bot.run_once()
+            # # 单次模式下，若当前时间接近尾盘，也可尝试强制卖出（可选）
+            # now = datetime.now()
+            # if now.hour >= Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE:
+            #     logger.info("单次运行且当前时间已到尾盘，执行强制卖出")
+            #     bot.force_sell_at_close()
     else:
         last_trade_date = None
         last_force_sell_date = None
