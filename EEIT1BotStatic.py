@@ -26,8 +26,7 @@ import pandas as pd
 try:
     from xtquant.xttrader import XtQuantTrader
     from xtquant.xttype import StockAccount
-    from xtquant import xtconstant
-    from xtquant.xtdata import get_full_tick, get_market_data
+    from xtquant import xtdata, xtconstant
     XT_AVAILABLE = True
 except ImportError:
     XT_AVAILABLE = False
@@ -258,13 +257,14 @@ class QMTClient:
 
     def get_realtime_price(self, code: str) -> Optional[float]:
         try:
-            tick = get_full_tick([code])
-            if code in tick:
+            tick = xtdata.get_full_tick([code])
+            if code in tick and "lastPrice" in tick[code]:
                 return tick[code]['lastPrice']
             else:
-                data = get_market_data([code], period='1d', count=1)
+                data = xtdata.get_market_data([code], period='1d', count=1)
                 if data is not None and not data.empty:
                     return data['close'].iloc[-1]
+
         except Exception as e:
             logger.error(f"获取 {code} 行情失败: {e}")
         return None
@@ -272,10 +272,10 @@ class QMTClient:
     def get_pre_close(self, code: str) -> Optional[float]:
         """获取前一交易日收盘价"""
         try:
-            tick = get_full_tick([code])
+            tick = xtdata.get_full_tick([code])
             if code in tick and 'lastClose' in tick[code]:
                 return tick[code]['lastClose']
-            data = get_market_data([code], period='1d', count=2)
+            data = xtdata.get_market_data([code], period='1d', count=2)
             if data is not None and not data.empty and len(data) >= 2:
                 return data['close'].iloc[-2]
         except Exception as e:
@@ -314,7 +314,7 @@ class QMTClient:
                 return None
             protect_price = pre_close * getattr(Config, 'FORCE_SELL_PRICE_RATIO', 0.98)
 
-            tick = get_full_tick([code])
+            tick = xtdata.get_full_tick([code])
             if code not in tick:
                 return protect_price
 
@@ -338,7 +338,7 @@ class QMTClient:
 
     def is_limit_up_down(self, code: str, price: float, direction: str) -> bool:
         try:
-            tick = get_full_tick([code])
+            tick = xtdata.get_full_tick([code])
             if code not in tick:
                 return False
             if direction == 'buy':
