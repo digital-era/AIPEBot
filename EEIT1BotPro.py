@@ -1,23 +1,14 @@
-# 为了解决 “致命缺陷1：阻塞式执行（串行死循环）”，我们需要将原本“一只股票卡在 while 循环里等成交”的逻辑，重构成 “全局状态机轮询”。
-# 也就是：用一个统一的大 while 循环，在每次循环（每3-5秒）中，同时检查所有需要买入和卖出的股票，只要某只股票满足条件就触发下单，互不干涉。
-# 修改效果说明：
-# 去除了嵌套死循环：所有需要操作的股票均放在字典（sell_tasks, buy_tasks）中追踪。每隔 3 秒，机器人会像雷达扫面一样同时检查所有股票的状态。
-# 多线程并发效果：现在股票A如果没有达到回落条件，程序会立刻检查股票B、股票C，不会被股票A卡死。
-# 接口请求优化：把原本分散在各个股票函数里的 query_stock_orders（查询所有订单记录）提到了大循环的最外层统一查询 _query_all_orders_status，极大地降低了与 QMT 通信的开销和延迟。
-# 尾盘强平更安全：到达14:50后，自动跳出大循环，统一对还没完成交易的股票进行尾盘兜底操作。
-
-# @title SIRIUS T1 Real Pro 
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-SIRIUS T+1 自动交易机器人 - 动态阈值择时版（尾盘强制卖出 + 部分成交处理）
+SIRIUS T+1 自动交易机器人 - 真实交易版（尾盘强制卖出版，专业修复版）
 功能：
-1. 买入：监控盘中最低点，从最低点反弹一定比例时买入（价格 ≤ 模型基准价）
-2. 卖出：监控盘中最高点，从最高点回落一定比例时卖出（正常时段价格 ≥ 昨收）
-3. 支持部分成交：卖出过程中持续监控剩余股数，直到全部卖出或尾盘
-4. 尾盘（14:50）强制卖出所有仍未卖出的股票（忽略价格下限，确保资金释放）
-5. 代理配置、断线重连、委托间隔可调
+1. 从 GitHub 拉取最新模型 JSON（支持本地缓存）
+2. 连接 MiniQMT，获取真实账户持仓、资金、行情
+3. 盘中动态择时机制：结合实时行情与短期技术信号，捕捉日内低买高卖机会
+4. 尾盘（14:50）强制卖出所有需要卖出的股票（无价格下限，确保资金释放）
+5. 完整日志、交易记录 Excel、持仓快照
+6. 支持单次运行和守护模式
 """
 
 import os
@@ -26,68 +17,78 @@ import json
 import time
 import logging
 import argparse
+import threading
 import requests
-from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Any
 import pandas as pd
-import random
 
+# 尝试导入 xtquant 库
 try:
     from xtquant.xttrader import XtQuantTrader
     from xtquant.xttype import StockAccount
-    from xtquant import xtconstant
-    from xtquant.xtdata import get_full_tick, get_market_data
+    from xtquant import xtdata, xtconstant
     XT_AVAILABLE = True
 except ImportError:
     XT_AVAILABLE = False
     print("错误: 未安装 xtquant，请确保 MiniQMT 客户端已安装并配置好 Python 环境")
     sys.exit(1)
 
-# ========================= 配置 =========================
+# ========================= 配置部分 =========================
 class Config:
+    """真实交易配置（请根据实际情况修改）"""
+    # QMT 连接配置
     QMT_PATH = r"D:\国金证券QMT\userdata_mini"
     ACCOUNT_ID = "8888888888"
+
+    # 模型与数据源
     MODEL_URL = "https://raw.githubusercontent.com/digital-era/AIPEQModel/main/流入模型_New.json"
     LOCAL_MODEL_CACHE = "流入模型_New.json.cache"
-    LOG_DIR = r"D:\AIPEQModelSIRIUS\Realpro\SIRIUS_Bot_Logs"
-    TRADE_RECORD_PATH = os.path.join(LOG_DIR, "trade_records.xlsx")
-    POSITION_SNAPSHOT_PATH = os.path.join(LOG_DIR, "position_snapshots.xlsx")
-    # 动态择时参数
-    BUY_REBOUND_RATIO = 0.0062      # 买入：从最低点反弹 0.2% 触发
-    SELL_DROP_RATIO = 0.0038        # 卖出：从最高点回落 0.2% 触发
-    MONITOR_START_HOUR = 10
-    MONITOR_START_MINUTE = 0
-    FORCE_DEADLINE_HOUR = 14
-    FORCE_DEADLINE_MINUTE = 50     # 尾盘强制卖出时间
-    # 风控与交易参数
-    MAX_ORDER_VOLUME = 1000000
-    TRADE_RATIO = 0.5
-    FORCE_SELL_PRICE_RATIO  =  0.995
     REQUEST_TIMEOUT = 30
     REQUEST_RETRIES = 3
-    ORDER_INTERVAL = 1.0
-    REAL_TRADE = True
+
+    # 日志与记录路径
+    LOG_DIR = r"D:\AIPEQModelSIRIUS\Real\SIRIUS_Bot_Logs"
+    TRADE_RECORD_PATH = os.path.join(LOG_DIR, "trade_records.xlsx")
+    POSITION_SNAPSHOT_PATH = os.path.join(LOG_DIR, "position_snapshots.xlsx")
+
+    # 交易参数
+    ORDER_TIMEOUT = 10
+    MAX_ORDER_VOLUME = 1000000
+    TRADE_RATIO = 0.5               # 资金使用比例（0.5 表示只用一半资金）
+    SLIPPAGE = 0.002                # 滑点容忍度（0.2%）
+    ORDER_INTERVAL = 1.0            # 委托间隔（秒）
+    REAL_TRADE = True               # 是否真实下单（False 为模拟模式）
     DEBUG = True
-    # 部分成交轮询间隔（秒）
-    PARTIAL_FILL_CHECK_INTERVAL = 10
 
-# 代理配置（从环境变量读取）
-#HTTP_PROXY = os.environ.get('HTTP_PROXY', '')
-#HTTPS_PROXY = os.environ.get('HTTPS_PROXY', '')
-HTTP_PROXY = 'http://127.0.0.1:7890'
-HTTPS_PROXY = 'http://127.0.0.1:7890'
+    # 强制卖出时间（尾盘）
+    FORCE_SELL_HOUR = 14
+    FORCE_SELL_MINUTE = 50
+    FORCE_SELL_PRICE_RATIO = 0.995  # 强制卖出的价格保护下限（尾盘不使用，保留备用）
 
+    # 盘中动态交易配置
+    INTRADAY_TRADING = True
+    LOOKBACK_MINUTES = 30           # 回看分钟数（计算均价）
+    BUY_THRESHOLD_PCT = -0.5        # 当前价低于均线 X% 触发买入（负值）
+    SELL_THRESHOLD_PCT = 0.5        # 当前价高于均线 X% 触发卖出（正值）
+    INTRADAY_SCAN_INTERVAL = 60     # 盘中扫描间隔（秒）
+    INTRADAY_COOLDOWN_SEC = 300     # 同一股票动态交易冷却时间（秒）
+
+    # 代理配置（如需代理请设置）
+    HTTP_PROXY = os.environ.get('HTTP_PROXY', '')   # 例如 'http://127.0.0.1:7890'
+    HTTPS_PROXY = os.environ.get('HTTPS_PROXY', '')
+
+# 代理字典构建
 PROXIES = {}
-if HTTP_PROXY:
-    PROXIES['http'] = HTTP_PROXY
-if HTTPS_PROXY:
-    PROXIES['https'] = HTTPS_PROXY
+if Config.HTTP_PROXY:
+    PROXIES['http'] = Config.HTTP_PROXY
+if Config.HTTPS_PROXY:
+    PROXIES['https'] = Config.HTTPS_PROXY
 
-# ========================= 日志 =========================
-def setup_logger():
+# ========================= 日志模块 =========================
+def setup_logger() -> logging.Logger:
     logger = logging.getLogger("SIRIUS_Bot")
-
-    if logger.handlers:  # ✅ 防止重复添加
+    if logger.handlers:
         return logger
 
     if not os.path.exists(Config.LOG_DIR):
@@ -111,12 +112,17 @@ def setup_logger():
 
 logger = setup_logger()
 
-# ========================= 时间工具 =========================
-def now_cn() -> datetime:
-    return datetime.now(timezone(timedelta(hours=8))).replace(tzinfo=None)
-
-# ========================= 模型加载 =========================
+# ========================= 模型加载模块 =========================
 class ModelLoader:
+    @staticmethod
+    def _convert_code(code: str) -> str:
+        """统一代码格式：002655 -> 002655.SZ"""
+        c = str(code).split('.')[0].zfill(6)
+        if len(c) > 6 and (c.endswith('.SH') or c.endswith('.SZ')):
+            return c
+        sh_prefixes = ('60', '68', '51', '56', '58', '55', '900')
+        return f"{c}.SH" if any(c.startswith(p) for p in sh_prefixes) else f"{c}.SZ"
+
     @staticmethod
     def _fetch_with_retry(url: str, retries: int = 3, timeout: int = 30) -> Optional[Dict]:
         for attempt in range(retries):
@@ -139,61 +145,85 @@ class ModelLoader:
             try:
                 with open(Config.LOCAL_MODEL_CACHE, 'w', encoding='utf-8') as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
-                logger.info("模型已缓存")
+                logger.info("模型已缓存到本地")
             except Exception as e:
                 logger.warning(f"缓存写入失败: {e}")
             return data
-        logger.warning("GitHub 获取失败，尝试本地缓存")
-        if os.path.exists(Config.LOCAL_MODEL_CACHE):
-            try:
-                with open(Config.LOCAL_MODEL_CACHE, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except Exception as e:
-                logger.error(f"读取缓存失败: {e}")
-        return None
+        else:
+            logger.warning("GitHub 获取失败，尝试本地缓存")
+            if os.path.exists(Config.LOCAL_MODEL_CACHE):
+                try:
+                    with open(Config.LOCAL_MODEL_CACHE, 'r', encoding='utf-8') as f:
+                        cached = json.load(f)
+                    logger.info("使用本地缓存模型（可能不是最新）")
+                    return cached
+                except Exception as e:
+                    logger.error(f"读取缓存失败: {e}")
+            else:
+                logger.error("无可用模型数据")
+            return None
 
     @staticmethod
     def parse_model(data: Dict) -> Tuple[List[Dict], float]:
         if data.get('运行状态') != '成功':
             logger.error("模型运行状态非成功")
             return [], 0.0
-        config_list = data.get('结果', {}).get('最优投资组合配置', {}).get('配置详情', [])
+        result = data.get('结果', {})
+        config_list = result.get('最优投资组合配置', {}).get('配置详情', [])
         if not config_list:
             logger.error("模型配置详情为空")
             return [], 0.0
         target = []
         for item in config_list:
-            code = item.get('代码', '')
+            raw_code = item.get('代码', '')
+            code = ModelLoader._convert_code(raw_code)
+            logger.info(f"代码格式转换: {raw_code} -> {code}")
+
             name = item.get('名称', '')
             weight_str = item.get('最优权重(%)', '0')
             weight = float(str(weight_str).replace('%', '')) / 100.0
             ref_price = item.get('最近一日价格')
-            if not ref_price or weight <= 0:
+            if ref_price is None:
+                logger.warning(f"股票 {code} 缺少参考价格，跳过")
                 continue
-            target.append({'code': code, 'name': name, 'weight': weight, 'ref_price': float(ref_price)})
-        risk_info = data.get('结果', {}).get('风控因子信息', {})
+            if weight <= 0:
+                continue
+            target.append({
+                'code': code,
+                'name': name,
+                'weight': weight,
+                'ref_price': float(ref_price)
+            })
+        risk_info = result.get('风控因子信息', {})
         position_factor = float(risk_info.get('综合建议仓位因子', 1.0))
         position_factor = max(0.0, min(1.0, position_factor))
         logger.info(f"解析到 {len(target)} 个目标持仓，仓位因子: {position_factor:.2f}")
         return target, position_factor
 
-# ========================= QMT 客户端 =========================
+# ========================= 真实 QMT 客户端（增强版） =========================
 class QMTClient:
     def __init__(self):
         self.xt_trader = None
         self.account = None
         self.connected = False
+        self.lock = threading.RLock()  # 可重入锁
 
     def connect(self) -> bool:
+        """连接 MiniQMT 并登录账户"""
         if not XT_AVAILABLE:
+            logger.error("xtquant 库未安装，无法连接 QMT")
             return False
         try:
             self.xt_trader = XtQuantTrader(Config.QMT_PATH, 1)
             self.xt_trader.start()
             self.account = StockAccount(Config.ACCOUNT_ID)
-            if self.xt_trader.connect() != 0:
+            connect_result = self.xt_trader.connect()
+            if connect_result != 0:
+                logger.error(f"QMT 连接失败，错误码: {connect_result}")
                 return False
-            if self.xt_trader.subscribe(self.account) != 0:
+            subscribe_result = self.xt_trader.subscribe(self.account)
+            if subscribe_result != 0:
+                logger.error(f"账户订阅失败，错误码: {subscribe_result}")
                 return False
             self.connected = True
             logger.info("QMT 连接成功")
@@ -203,158 +233,119 @@ class QMTClient:
             return False
 
     def reconnect(self) -> bool:
+        """尝试重连（不持有锁时调用）"""
         logger.info("尝试重连 QMT...")
         self.connected = False
         return self.connect()
 
     def get_positions(self) -> Dict[str, Dict]:
-        if not self.connected:
-            return {}
-        positions = {}
-        try:
-            for pos in self.xt_trader.query_stock_positions(self.account):
-                if pos.m_nVolume > 0:
-                    positions[pos.m_strStockCode] = {
+        with self.lock:
+            if not self.connected:
+                logger.error("未连接到 QMT")
+                return {}
+            positions = {}
+            try:
+                position_list = self.xt_trader.query_stock_positions(self.account)
+                for pos in position_list:
+                    if pos.m_nVolume <= 0:
+                        continue
+                    code = pos.m_strStockCode
+                    positions[code] = {
                         'volume': pos.m_nVolume,
                         'can_sell': pos.m_nCanUseVolume,
                         'avg_price': pos.m_dAvgPrice,
                     }
-            logger.debug(f"获取到 {len(positions)} 个持仓")
-        except Exception as e:
-            logger.error(f"获取持仓失败: {e}")
-        return positions
+                logger.info(f"获取到 {len(positions)} 个持仓")
+            except Exception as e:
+                logger.error(f"获取持仓失败: {e}")
+            return positions
 
     def get_account_info(self) -> Dict:
-        if not self.connected:
-            return {}
-        try:
-            asset = self.xt_trader.query_stock_asset(self.account)
-            return {'total_asset': asset.m_dTotalAsset, 'available_cash': asset.m_dAvailable}
-        except Exception as e:
-            logger.error(f"获取账户信息失败: {e}")
-            return {}
+        with self.lock:
+            if not self.connected:
+                return {}
+            try:
+                asset = self.xt_trader.query_stock_asset(self.account)
+                return {
+                    'total_asset': asset.m_dTotalAsset,
+                    'available_cash': asset.m_dAvailable
+                }
+            except Exception as e:
+                logger.error(f"获取账户信息失败: {e}")
+                return {}
 
     def get_realtime_price(self, code: str) -> Optional[float]:
-        try:
-            tick = get_full_tick([code])
-            if code in tick:
-                return tick[code]['lastPrice']
-            data = get_market_data([code], period='1d', count=1)
-            if data is not None and not data.empty:
-                return data['close'].iloc[-1]
-        except Exception as e:
-            logger.error(f"获取 {code} 行情失败: {e}")
-        return None
+        """获取最新价"""
+        with self.lock:
+            try:
+                tick = xtdata.get_full_tick([code])
+                if code in tick and "lastPrice" in tick[code]:
+                    return tick[code]['lastPrice']
+                # 备用：获取日线最近收盘价
+                data = xtdata.get_market_data([code], period='1d', count=1)
+                if data is not None and not data.empty:
+                    # 根据实际API返回结构调整，此处假设返回DataFrame，列名'close'
+                    if 'close' in data.columns:
+                        return data['close'].iloc[-1]
+            except Exception as e:
+                logger.error(f"获取 {code} 行情失败: {e}")
+            return None
 
     def get_pre_close(self, code: str) -> Optional[float]:
+        """获取前一交易日收盘价"""
         try:
-            tick = get_full_tick([code])
+            tick = xtdata.get_full_tick([code])
             if code in tick and 'lastClose' in tick[code]:
                 return tick[code]['lastClose']
-            data = get_market_data([code], period='1d', count=2)
+            data = xtdata.get_market_data([code], period='1d', count=2)
             if data is not None and not data.empty and len(data) >= 2:
                 return data['close'].iloc[-2]
         except Exception as e:
             logger.error(f"获取 {code} 前收价失败: {e}")
         return None
 
-    def get_optimal_buy_price(self, code: str, ref_price: float) -> Optional[float]:
+    def get_buy_price_constrained(self, code: str, ref_price: float) -> Optional[float]:
+        """买入价 ≤ 基准价"""
         if ref_price <= 0:
             return None
-        try:
-            tick = get_full_tick([code])
-            if not tick or code not in tick:
-                return ref_price
-
-            tick_data = tick.get(code, {})
-            ask1 = tick_data.get('askPrice', [0])[0]
-
-            if ask1 and ask1 > 0:
-                return min(ref_price, ask1)
-
-            last = tick_data.get('lastPrice', 0)
-            if last > 0:
-                return min(ref_price, last)
-
+        real = self.get_realtime_price(code)
+        if real is None:
             return ref_price
-        except Exception as e:
-            logger.error(f"获取买入价失败 {code}: {e}")
-            return None
+        return min(real, ref_price)
 
-    def get_optimal_sell_price(self, code: str, pre_close: float) -> Optional[float]:
+    def get_sell_price_constrained(self, code: str, pre_close: float) -> Optional[float]:
+        """正常时段卖出价 ≥ 昨收"""
         if pre_close <= 0:
             return None
-        try:
-            tick = get_full_tick([code])
-            if not tick or code not in tick:
-                return pre_close
-
-            tick_data = tick.get(code, {})
-            bid1 = tick_data.get('bidPrice', [0])[0]
-
-            if bid1 and bid1 > 0:
-                return max(pre_close, bid1)
-
-            last = tick_data.get('lastPrice', 0)
-            if last > 0:
-                return max(pre_close, last)
-
+        real = self.get_realtime_price(code)
+        if real is None:
             return pre_close
-        except Exception as e:
-            logger.error(f"获取卖出价失败 {code}: {e}")
-            return None
+        return max(real, pre_close)
 
-
-    def get_sell_price_unconstrained(self, code: str, pre_close: float = None) -> Optional[float]:
+    def get_sell_price_unconstrained(self, code: str) -> Optional[float]:
         """
-        尾盘强制卖出：获取一个既能成交又不至于过低的价格。
-        优先使用买一价（bid1），但不得低于保护价（pre_close * FORCE_SELL_PRICE_RATIO）。
-        若无买一价，则使用最新价，同样不低于保护价。
+        尾盘强制卖出：获取当前最优卖出价（无价格下限）。
+        优先使用买一价，若无效则使用最新价。
         """
         try:
-            # 获取保护价
-            if pre_close is None:
-                pre_close = self.get_pre_close(code)
-            if pre_close is None:
-                logger.warning(f"{code} 无法获取昨收，无法设置价格下限")
+            tick = xtdata.get_full_tick([code])
+            if code not in tick:
                 return None
-            protect_price = pre_close * getattr(Config, 'FORCE_SELL_PRICE_RATIO', 0.98)
-
-            bid1 = None
-            last = None
-
-            tick = get_full_tick([code])
-            if code in tick:
-                bid1 = tick[code].get('bidPrice', [0])[0] if 'bidPrice' in tick[code] else 0
-                last = tick[code].get('lastPrice', 0)
-
-                if bid1 > 0:
-                    best_price = bid1
-                elif last > 0:
-                    best_price = last
-                else:
-                    best_price = protect_price
-            else:
-                price = self.get_realtime_price(code)
-                if price is not None:
-                    best_price = price
-                    last = price
-                else:
-                    best_price = protect_price
-
-            final_price = max(best_price, protect_price)
-
-            logger.debug(
-                f"{code} 强制卖出: 买一{bid1}, 最新{last}, 保护价{protect_price:.2f}, 最终{final_price:.2f}"
-            )
-            return final_price
+            bid1 = tick[code].get('bidPrice', [0])[0] if 'bidPrice' in tick[code] else 0
+            last = tick[code].get('lastPrice', 0)
+            if bid1 > 0:
+                return bid1
+            if last > 0:
+                return last
+            return None
         except Exception as e:
             logger.error(f"获取 {code} 强制卖出价失败: {e}")
             return None
 
     def is_limit_up_down(self, code: str, price: float, direction: str) -> bool:
+        """判断是否涨跌停"""
         try:
-            tick = get_full_tick([code])
+            tick = xtdata.get_full_tick([code])
             if code not in tick:
                 return False
             if direction == 'buy':
@@ -365,235 +356,152 @@ class QMTClient:
             return False
 
     def place_order(self, code: str, order_type: str, volume: int, price: float) -> bool:
+        """真实下单，带断线重连"""
         if not Config.REAL_TRADE:
-            logger.info(f"[模拟模式] {order_type} {code} {volume}股 @ {price:.2f}")
+            logger.info(f"[模拟模式] 跳过真实下单: {order_type} {code} {volume}股 @ {price:.2f}")
             return True
-        if not self.connected:
-            if not self.reconnect():
-                logger.error("未连接到 QMT 且重连失败，无法下单")
-                return False
-        if volume <= 0 or volume % 100 != 0:
-            volume = (volume // 100) * 100
+
+        with self.lock:
+            if not self.connected:
+                # 重连（锁内调用 reconnect， reconnect 内部会修改 connected，但 reconnect 无锁，没问题）
+                if not self.reconnect():
+                    logger.error("未连接到 QMT 且重连失败，无法下单")
+                    return False
+
             if volume <= 0:
                 return False
-        if self.is_limit_up_down(code, price, order_type):
-            logger.warning(f"{code} 已{'涨停' if order_type=='buy' else '跌停'}，放弃")
-            return False
-        order_id = self.xt_trader.order_stock_async(
-            self.account, code,
-            xtconstant.STOCK_BUY if order_type == 'buy' else xtconstant.STOCK_SELL,
-            volume, price, 'limit'
-        )
-        if order_id > 0:
-            logger.info(f"委托成功: {order_type} {code} {volume}股 @ {price:.2f} 订单号{order_id}")
-            return True
-        else:
-            logger.error(f"委托失败: {order_type} {code} {volume}股 @ {price:.2f} 错误码{order_id}")
-            return False
+            if volume % 100 != 0:
+                logger.warning(f"委托股数 {volume} 不是100的倍数，自动调整为 {volume // 100 * 100}")
+                volume = volume // 100 * 100
+                if volume == 0:
+                    return False
 
-# ========================= 动态择时执行器（非阻塞并发轮询版） =========================
-class DynamicOrderExecutor:
-    def __init__(self, qmt_client):
-        self.qmt = qmt_client
-        self.today_trades = []
+            if self.is_limit_up_down(code, price, order_type):
+                logger.warning(f"{code} 已{'涨停' if order_type=='buy' else '跌停'}，放弃下单")
+                return False
 
-    def _wait_until_start_time(self):
-        start = now_cn().replace(hour=Config.MONITOR_START_HOUR, minute=Config.MONITOR_START_MINUTE, second=0)
-        if now_cn() < start:
-            wait_seconds = (start - now_cn()).total_seconds()
-            logger.info(f"等待至 {Config.MONITOR_START_HOUR}:{Config.MONITOR_START_MINUTE:02d} 开始监控")
-            time.sleep(wait_seconds)
+            if order_type == 'buy':
+                order_id = self.xt_trader.order_stock_async(
+                    self.account, code, xtconstant.STOCK_BUY, volume, price, 'limit'
+                )
+            else:
+                order_id = self.xt_trader.order_stock_async(
+                    self.account, code, xtconstant.STOCK_SELL, volume, price, 'limit'
+                )
 
-    def _query_all_orders_status(self, sell_tasks: Dict, buy_tasks: Dict) -> Tuple[Dict, Dict, Dict]:
-        """批量查询订单状态，避免每次轮询都单独查询接口导致卡顿"""
-        sold_dict = {code: 0 for code in sell_tasks}
-        bought_dict = {code: 0 for code in buy_tasks}
-        pending_sell_dict = {code: 0 for code in sell_tasks}
+            if order_id > 0:
+                logger.info(f"委托成功: {order_type} {code} {volume}股 @ {price:.2f}，订单号 {order_id}")
+                return True
+            else:
+                logger.error(f"委托失败: {order_type} {code} {volume}股 @ {price:.2f}，错误码 {order_id}")
+                return False
 
+    def cancel_order(self, order_id: int) -> bool:
+        """撤销指定订单"""
+        with self.lock:
+            if not self.connected:
+                return False
+            try:
+                result = self.xt_trader.cancel_order(self.account, order_id)
+                if result == 0:
+                    logger.info(f"撤单成功: 订单号 {order_id}")
+                    return True
+                else:
+                    logger.warning(f"撤单失败: 订单号 {order_id}, 错误码 {result}")
+                    return False
+            except Exception as e:
+                logger.error(f"撤单异常: {e}")
+                return False
+
+    def get_pending_sell_orders(self, code: str = None) -> List:
+        """获取所有未成交的卖出委托"""
+        with self.lock:
+            if not self.connected:
+                return []
+            try:
+                orders = self.xt_trader.query_stock_orders(self.account)
+                pending = []
+                for order in orders:
+                    if order.m_nOrderType != xtconstant.STOCK_SELL:
+                        continue
+                    if order.m_nOrderStatus in (xtconstant.ORDER_UNREPORTED, xtconstant.ORDER_REPORTED, xtconstant.ORDER_PARTIAL):
+                        if code is None or order.m_strStockCode == code:
+                            pending.append(order)
+                return pending
+            except Exception as e:
+                logger.error(f"查询未成交卖出委托失败: {e}")
+                return []
+
+    def get_dynamic_reference_price(self, code: str, minutes: int = 30) -> Optional[float]:
+        """获取过去N分钟均价（使用1分钟K线）"""
         try:
-            orders = self.qmt.xt_trader.query_stock_orders(self.qmt.account) or []
-            for o in orders:
-                code = o.m_strStockCode
-                # 统计卖出
-                if code in sell_tasks and o.m_nOrderType == xtconstant.STOCK_SELL:
-                    if o.m_nOrderStatus in (xtconstant.ORDER_FILLED, xtconstant.ORDER_PARTIAL):
-                        sold_dict[code] += o.m_nFilledVolume
-                    elif o.m_nOrderStatus == xtconstant.ORDER_NOT_FILLED:
-                        pending_sell_dict[code] += (o.m_nVolume - o.m_nFilledVolume)
-                # 统计买入
-                elif code in buy_tasks and o.m_nOrderType == xtconstant.STOCK_BUY:
-                    if o.m_nOrderStatus in (xtconstant.ORDER_FILLED, xtconstant.ORDER_PARTIAL):
-                        bought_dict[code] += o.m_nFilledVolume
+            end_time = datetime.now()
+            start_time = end_time - pd.Timedelta(minutes=minutes)
+            # 下载历史分钟线数据（需先下载）
+            xtdata.download_history_data(code, '1m', start_time.strftime("%Y%m%d%H%M%S"), end_time.strftime("%Y%m%d%H%M%S"))
+            data = xtdata.get_market_data(
+                field_list=['close'],
+                stock_list=[code],
+                period='1m',
+                start_time=start_time.strftime("%Y%m%d%H%M%S"),
+                end_time=end_time.strftime("%Y%m%d%H%M%S")
+            )
+            if data is not None and not data.empty:
+                avg_price = data['close'].mean()
+                return float(avg_price)
         except Exception as e:
-            logger.error(f"查询订单状态异常: {e}")
+            logger.warning(f"获取 {code} 动态参考价失败: {e}")
+        return None
 
-        return sold_dict, bought_dict, pending_sell_dict
-
-    def execute_all(self, buy_orders: List[Dict], sell_orders: List[Dict]):
-        """全局并发执行买卖任务"""
-        self._wait_until_start_time()
-
-        # 初始化任务状态字典
-        sell_tasks = {
-            o['code']: {'name': o['name'], 'pre_close': o['pre_close'], 'target': o['volume'], 
-                        'high_price': -float('inf'), 'entrusted': 0, 'sold': 0} 
-            for o in sell_orders if o['volume'] > 0
-        }
-        
-        buy_tasks = {
-            o['code']: {'name': o['name'], 'ref_price': o['ref_price'], 'target': o['volume'], 
-                        'low_price': float('inf'), 'entrusted': 0, 'bought': 0} 
-            for o in buy_orders if o['volume'] > 0
-        }
-
-        deadline = now_cn().replace(hour=Config.FORCE_DEADLINE_HOUR, minute=Config.FORCE_DEADLINE_MINUTE, second=0)
-
-        logger.info(f"开始全局并发监控: {len(buy_tasks)} 个买入任务, {len(sell_tasks)} 个卖出任务")
-
-        # 【核心重构】：一个全局大循环，同时监控所有股票
-        while now_cn() < deadline:
-            # 1. 检查是否所有任务都已完成
-            sells_done = all((t['target'] - t['sold'] <= 0) for t in sell_tasks.values())
-            buys_done = all((t['target'] - t['bought'] <= 0) for t in buy_tasks.values())
-            if sells_done and buys_done:
-                logger.info("所有盘中择时买卖任务已全部完成！")
-                break
-
-            # 2. 批量刷新实际成交数据
-            sold_dict, bought_dict, pending_sells = self._query_all_orders_status(sell_tasks, buy_tasks)
-            for code, t in sell_tasks.items(): t['sold'] = sold_dict[code]
-            for code, t in buy_tasks.items(): t['bought'] = bought_dict[code]
-
-            # 3. 处理所有卖出任务
-            for code, task in sell_tasks.items():
-                remaining = task['target'] - task['sold']
-                if remaining <= 0:
-                    continue
-
-                cur_price = self.qmt.get_optimal_sell_price(code, task['pre_close'])
-                if cur_price is None or cur_price <= 0:
-                    continue
-
-                # 更新盘中最高价
-                if cur_price > task['high_price']:
-                    task['high_price'] = cur_price
-
-                # 判断回落
-                if cur_price <= task['high_price'] * (1 - Config.SELL_DROP_RATIO):
-                    # 如果有未成交挂单，先不重复下
-                    if pending_sells.get(code, 0) >= remaining:
-                        continue
-                    
-                    # 防死循环无限挂单约束
-                    if (task['entrusted'] - task['sold']) > task['target'] * 1.2:
-                        continue
-
-                    to_sell = remaining - (task['entrusted'] - task['sold'])
-                    if to_sell > 0:
-                        logger.info(f"{code} 触发卖出: 当前{cur_price:.2f} 最高{task['high_price']:.2f}")
-                        if self.qmt.place_order(code, 'sell', to_sell, cur_price):
-                            task['entrusted'] += to_sell
-
-            # 4. 处理所有买入任务
-            for code, task in buy_tasks.items():
-                remaining = task['target'] - task['bought']
-                if remaining <= 0:
-                    continue
-
-                cur_price = self.qmt.get_optimal_buy_price(code, task['ref_price'])
-                if cur_price is None or cur_price <= 0:
-                    continue
-
-                # 更新盘中最低价
-                if cur_price < task['low_price']:
-                    task['low_price'] = cur_price
-
-                # 判断反弹且不超过基准价
-                if cur_price >= task['low_price'] * (1 + Config.BUY_REBOUND_RATIO) and cur_price <= task['ref_price']:
-                    # 防死循环无限挂单约束
-                    if (task['entrusted'] - task['bought']) > task['target'] * 1.2:
-                        continue
-
-                    to_buy = remaining - (task['entrusted'] - task['bought'])
-                    if to_buy > 0:
-                        logger.info(f"{code} 触发买入: 当前{cur_price:.2f} 最低{task['low_price']:.2f}")
-                        if self.qmt.place_order(code, 'buy', to_buy, cur_price):
-                            task['entrusted'] += to_buy
-
-            # 统一休眠（避免单只股票阻塞导致全盘卡死）
-            time.sleep(3)
-
-        # ==================== 尾盘强制处理（14:50之后） ====================
-        logger.info("到达尾盘最后时限，开始执行清理与强平操作...")
-        sold_dict, bought_dict, _ = self._query_all_orders_status(sell_tasks, buy_tasks)
-        
-        # 强制卖出剩余股票
-        for code, task in sell_tasks.items():
-            remaining = task['target'] - sold_dict[code]
-            if remaining > 0:
-                logger.info(f"{code} 进入尾盘强制卖出，剩余 {remaining} 股")
-                force_price = self.qmt.get_sell_price_unconstrained(code, task['pre_close'])
-                if force_price and force_price > 0 and not self.qmt.is_limit_up_down(code, force_price, 'sell'):
-                    if self.qmt.place_order(code, 'sell', remaining, force_price):
-                        self._record_trade(code, task['name'], '强制卖出', remaining, force_price)
-
-        # 尾盘补买剩余股票（只要不超过基准价）
-        for code, task in buy_tasks.items():
-            remaining = task['target'] - bought_dict[code]
-            if remaining > 0:
-                current_price = self.qmt.get_optimal_buy_price(code, task['ref_price'])
-                if current_price and current_price <= task['ref_price']:
-                    logger.info(f"尾盘补买 {code} {remaining} 股")
-                    self.qmt.place_order(code, 'buy', remaining, current_price)
-
-    def _record_trade(self, code, name, direction, volume, price):
-        self.today_trades.append({
-            '时间': now_cn().strftime('%Y-%m-%d %H:%M:%S'),
-            '股票代码': code,
-            '股票名称': name,
-            '方向': direction,
-            '委托数量': volume,
-            '成交价': price,
-            '成交金额': volume * price,
-        })
-
-# ========================= 信号生成器 =========================
+# ========================= 交易信号生成器 =========================
 class TradeSignalGenerator:
     @staticmethod
     def calculate_target_volume(total_asset: float, target_weight: float, price: float) -> int:
         target_value = total_asset * target_weight
-        return max(0, int(target_value / price / 100) * 100)
+        target_volume = int(target_value / price / 100) * 100
+        return max(0, target_volume)
 
     @staticmethod
     def generate_orders(current_positions: Dict, target_holdings: List[Dict],
-                    total_asset: float, position_factor: float,
-                    available_cash: float, qmt_client) -> Tuple[List[Dict], List[Dict]]:
-        # 引入资金使用比例（例如 0.5 表示只用一半资金）
+                        total_asset: float, position_factor: float,
+                        available_cash: float, qmt_client) -> Tuple[List[Dict], List[Dict]]:
+        """
+        生成正常时段的买卖指令（买入价 ≤ 基准价，卖出价 ≥ 昨收）
+        返回 (buy_orders, sell_orders)
+        """
         trade_ratio = getattr(Config, 'TRADE_RATIO', 1.0)
         effective_total_asset = total_asset * trade_ratio
-        risk_adjusted_asset = effective_total_asset * position_factor   # 风控后资产
+        risk_adjusted_asset = effective_total_asset * position_factor
         effective_available_cash = available_cash * trade_ratio
 
+        # 构建目标字典（买入价受约束）
         target_dict = {}
         for h in target_holdings:
             code = h['code']
             effective_weight = h['weight'] * position_factor
-            price = qmt_client.get_optimal_buy_price(code, h['ref_price'])
-            if price is None or price <= 0:
-                price = h['ref_price']
-            # 使用缩放后的总资产计算目标股数
-            target_vol = TradeSignalGenerator.calculate_target_volume(risk_adjusted_asset, effective_weight, price)
+            buy_price = qmt_client.get_buy_price_constrained(code, h['ref_price'])
+            if buy_price is None:
+                logger.warning(f"{code} 无法获取有效买入价格，跳过")
+                continue
+            target_vol = TradeSignalGenerator.calculate_target_volume(risk_adjusted_asset, effective_weight, buy_price)
             if target_vol > 0:
                 target_dict[code] = {
                     'volume': target_vol,
-                    'price': price,
+                    'price': buy_price,
                     'name': h['name'],
                     'ref_price': h['ref_price']
                 }
 
-        current_dict = {code: {'volume': pos['volume'], 'can_sell': pos['can_sell']}
-                        for code, pos in current_positions.items()}
+        # 当前持仓字典
+        current_dict = {}
+        for code, pos in current_positions.items():
+            current_dict[code] = {
+                'volume': pos['volume'],
+                'can_sell': pos['can_sell'],
+                'avg_price': pos['avg_price']
+            }
 
+        # 卖出指令（正常时段）
         sell_orders = []
         for code, cur in current_dict.items():
             target_vol = target_dict.get(code, {}).get('volume', 0)
@@ -602,10 +510,20 @@ class TradeSignalGenerator:
                 if sell_vol > 0:
                     pre_close = qmt_client.get_pre_close(code)
                     if pre_close is None:
-                        logger.warning(f"{code} 无法获取昨收，跳过卖出")
+                        logger.warning(f"{code} 无法获取昨日收盘价，跳过卖出")
                         continue
-                    sell_orders.append({'code': code, 'volume': sell_vol, 'name': code, 'pre_close': pre_close})
+                    sell_price = qmt_client.get_sell_price_constrained(code, pre_close)
+                    if sell_price is None:
+                        continue
+                    sell_orders.append({
+                        'code': code,
+                        'volume': sell_vol,
+                        'price': sell_price,
+                        'name': code,
+                        'pre_close': pre_close
+                    })
 
+        # 买入指令
         buy_orders = []
         estimated_cost = 0.0
         for code, target in target_dict.items():
@@ -614,151 +532,607 @@ class TradeSignalGenerator:
                 buy_vol = target['volume'] - cur_vol
                 buy_vol = (buy_vol // 100) * 100
                 if buy_vol > 0:
-                    buy_orders.append({'code': code, 'volume': buy_vol, 'name': target['name'], 'ref_price': target['ref_price']})
+                    buy_orders.append({
+                        'code': code,
+                        'volume': buy_vol,
+                        'price': target['price'],
+                        'name': target['name']
+                    })
                     estimated_cost += buy_vol * target['price']
 
-        # 资金不足时缩减，使用缩放后的可用现金
+        # 资金不足时缩减买入量
         if estimated_cost > effective_available_cash + 1e-6:
             ratio = effective_available_cash / estimated_cost
             logger.warning(f"资金不足，缩减买入量，比例 {ratio:.2f}")
-            for o in buy_orders:
-                o['volume'] = int(o['volume'] * ratio / 100) * 100
+            for order in buy_orders:
+                order['volume'] = int(order['volume'] * ratio / 100) * 100
             buy_orders = [o for o in buy_orders if o['volume'] > 0]
 
         return buy_orders, sell_orders
 
-# ========================= 业绩记录 =========================
+    @staticmethod
+    def generate_force_sell_orders(current_positions: Dict, target_holdings: List[Dict],
+                                   position_factor: float, qmt_client) -> List[Dict]:
+        """
+        尾盘强制卖出：直接计算需要卖出的股数（不考虑价格约束）
+        返回 sell_orders 列表，每个包含 code, volume, name, pre_close（可选）
+        """
+        # 构建目标持仓字典（仅股数，不考虑价格）
+        target_vol_dict = {}
+        for h in target_holdings:
+            code = h['code']
+            # 需要总资产信息，但强制卖出时无法获取实时总资产，使用当前持仓的总市值+现金估算
+            # 为简化，我们只根据目标权重计算应持有的市值比例，但需要账户总资产。
+            # 由于强制卖出发生在尾盘，可以重新获取账户信息，但这里作为静态方法需要传入 total_asset
+            # 实际上在调用时，外层会传入 total_asset，这里修改方法签名更合理。
+            # 但为了保持接口，我们在调用处计算目标股数并传入。因此该方法不在此实现，改为在 force_sell_at_close 中直接计算。
+            pass
+        # 此方法弃用，改用外部直接计算
+        return []
+
+# ========================= 订单执行器 =========================
+class OrderExecutor:
+    def __init__(self):
+        self.today_trades = []
+        self.today_buy_volumes = {}   # 记录每个股票当日买入的股数，用于 T+1 限制
+
+    def execute_orders(self, buy_orders: List[Dict], sell_orders: List[Dict], qmt_client) -> Tuple[List[Dict], List[Dict]]:
+        """执行买卖指令，先卖后买，并记录当日买入股数"""
+        executed_sells = []
+        # 卖出时需排除当日买入的股数（T+1限制）
+        for order in sell_orders:
+            code = order['code']
+            today_buy_vol = self.today_buy_volumes.get(code, 0)
+            max_sell = order['volume'] - today_buy_vol
+            if max_sell <= 0:
+                logger.debug(f"{code} 当日已买入 {today_buy_vol}股，无可卖旧股，跳过卖出")
+                continue
+            # 实际可卖不超过可用持仓（但 order['volume'] 已经基于持仓可卖，这里只是减掉当日买入部分）
+            sell_vol = min(order['volume'], max_sell)
+            if sell_vol <= 0:
+                continue
+
+            success = qmt_client.place_order(code, 'sell', sell_vol, order['price'])
+            if success:
+                trade_record = {
+                    '时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    '股票代码': code,
+                    '股票名称': order.get('name', code),
+                    '方向': '卖出',
+                    '委托数量': sell_vol,
+                    '成交价': order['price'],
+                    '成交金额': sell_vol * order['price'],
+                }
+                executed_sells.append(trade_record)
+                self.today_trades.append(trade_record)
+            time.sleep(Config.ORDER_INTERVAL)
+
+        executed_buys = []
+        for order in buy_orders:
+            success = qmt_client.place_order(order['code'], 'buy', order['volume'], order['price'])
+            if success:
+                trade_record = {
+                    '时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    '股票代码': order['code'],
+                    '股票名称': order.get('name', order['code']),
+                    '方向': '买入',
+                    '委托数量': order['volume'],
+                    '成交价': order['price'],
+                    '成交金额': order['volume'] * order['price'],
+                }
+                executed_buys.append(trade_record)
+                self.today_trades.append(trade_record)
+                # 记录当日买入股数
+                self.today_buy_volumes[order['code']] = self.today_buy_volumes.get(order['code'], 0) + order['volume']
+            time.sleep(Config.ORDER_INTERVAL)
+
+        return executed_buys, executed_sells
+
+    def reset_daily(self):
+        self.today_trades.clear()
+        self.today_buy_volumes.clear()
+
+# ========================= 业绩记录模块 =========================
 class PerformanceEvaluator:
     @staticmethod
     def save_trades(trades: List[Dict]):
         if not trades:
             return
-        df = pd.DataFrame(trades)
+        df_new = pd.DataFrame(trades)
         if os.path.exists(Config.TRADE_RECORD_PATH):
-            old = pd.read_excel(Config.TRADE_RECORD_PATH)
-            df = pd.concat([old, df], ignore_index=True)
+            df_old = pd.read_excel(Config.TRADE_RECORD_PATH)
+            df_combined = pd.concat([df_old, df_new], ignore_index=True)
+        else:
+            df_combined = df_new
         os.makedirs(os.path.dirname(Config.TRADE_RECORD_PATH), exist_ok=True)
-        df.to_excel(Config.TRADE_RECORD_PATH, index=False)
-        logger.info(f"保存 {len(trades)} 条交易记录")
+        df_combined.to_excel(Config.TRADE_RECORD_PATH, index=False)
+        logger.info(f"保存 {len(trades)} 条交易记录至 {Config.TRADE_RECORD_PATH}")
 
     @staticmethod
     def save_position_snapshot(positions: Dict, total_asset: float):
-        records = [{'日期': now_cn().strftime('%Y-%m-%d'), '股票代码': code,
-                    '持股数量': pos['volume'], '可卖数量': pos.get('can_sell', pos['volume']), '成本价': pos['avg_price']}
-                   for code, pos in positions.items()]
-        records.append({'日期': now_cn().strftime('%Y-%m-%d'), '股票代码': 'TOTAL', '总资产': total_asset})
-        df = pd.DataFrame(records)
+        records = []
+        for code, pos in positions.items():
+            records.append({
+                '日期': datetime.now().strftime('%Y-%m-%d'),
+                '股票代码': code,
+                '持股数量': pos['volume'],
+                '可卖数量': pos.get('can_sell', pos['volume']),
+                '成本价': pos['avg_price'],
+            })
+        records.append({
+            '日期': datetime.now().strftime('%Y-%m-%d'),
+            '股票代码': 'TOTAL',
+            '总资产': total_asset,
+        })
+        df_new = pd.DataFrame(records)
         if os.path.exists(Config.POSITION_SNAPSHOT_PATH):
-            old = pd.read_excel(Config.POSITION_SNAPSHOT_PATH)
-            df = pd.concat([old, df], ignore_index=True)
+            df_old = pd.read_excel(Config.POSITION_SNAPSHOT_PATH)
+            df_combined = pd.concat([df_old, df_new], ignore_index=True)
+        else:
+            df_combined = df_new
         os.makedirs(os.path.dirname(Config.POSITION_SNAPSHOT_PATH), exist_ok=True)
-        df.to_excel(Config.POSITION_SNAPSHOT_PATH, index=False)
+        df_combined.to_excel(Config.POSITION_SNAPSHOT_PATH, index=False)
         logger.info("保存持仓快照")
 
 # ========================= 主机器人 =========================
 class SIRIUSBot:
     def __init__(self):
-        self.qmt = QMTClient()
         self.model_loader = ModelLoader()
+        self.qmt = QMTClient()
         self.signal_gen = TradeSignalGenerator()
+        self.executor = OrderExecutor()
         self.evaluator = PerformanceEvaluator()
 
+        # 缓存当日模型数据
+        self.cached_target_holdings = None
+        self.cached_position_factor = None
+        self.last_rebalance_date = None      # 上次基准调仓日期
+        self.last_force_sell_date = None     # 上次强制卖出日期
+        self.last_intraday_ts = 0            # 上次盘中扫描时间戳
+
     def run_once(self):
-        logger.info("========== SIRIUS Bot 开始运行 ==========")
+        """执行一次完整的早盘调仓（基准调仓）"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        if self.last_rebalance_date == today:
+            logger.info("今日已完成基准调仓，跳过")
+            return
+
+        logger.info("========== SIRIUS 基准调仓开始 ==========")
+        self.executor.reset_daily()
+
+        # 1. 加载模型
         model_data = self.model_loader.load_latest_model()
         if not model_data:
-            logger.error("模型加载失败")
+            logger.error("模型加载失败，退出")
             return
         target_holdings, position_factor = self.model_loader.parse_model(model_data)
         if not target_holdings:
-            logger.error("无有效目标持仓")
+            logger.error("无有效目标持仓，退出")
             return
 
-        account = self.qmt.get_account_info()
-        if not account:
-            logger.error("获取账户信息失败")
+        # 缓存模型数据
+        self.cached_target_holdings = target_holdings
+        self.cached_position_factor = position_factor
+
+        # 2. 获取账户信息
+        account_info = self.qmt.get_account_info()
+        if not account_info:
+            logger.error("获取账户信息失败，退出")
             return
-        total_asset = account['total_asset']
-        available_cash = account['available_cash']
+        total_asset = account_info['total_asset']
+        available_cash = account_info['available_cash']
         logger.info(f"总资产: {total_asset:.2f}, 可用资金: {available_cash:.2f}")
 
+        # 3. 获取当前持仓
         current_positions = self.qmt.get_positions()
+
+        # 4. 生成买卖指令
         buy_orders, sell_orders = self.signal_gen.generate_orders(
             current_positions, target_holdings, total_asset, position_factor, available_cash, self.qmt
         )
-        logger.info(f"生成买入 {len(buy_orders)} 条，卖出 {len(sell_orders)} 条")
+        logger.info(f"生成买入指令 {len(buy_orders)} 条，卖出指令 {len(sell_orders)} 条")
         for o in buy_orders:
-            logger.info(f"  买入 {o['code']} {o['volume']}股 基准价{o['ref_price']:.2f}")
+            logger.info(f"  买入 {o['code']} {o['volume']}股 @ {o['price']:.2f}")
         for o in sell_orders:
-            logger.info(f"  卖出 {o['code']} {o['volume']}股 昨收{o['pre_close']:.2f}")
+            logger.info(f"  卖出 {o['code']} {o['volume']}股 @ {o['price']:.2f}")
 
-        executor = DynamicOrderExecutor(self.qmt)
-        # 【修改】：不再串行阻塞，直接将所有买卖清单交给 executor 进行并发处理
-        executor.execute_all(buy_orders, sell_orders)
+        if not buy_orders and not sell_orders:
+            logger.info("无调仓需要，结束")
+            return
 
-        if executor.today_trades:
-            self.evaluator.save_trades(executor.today_trades)
+        # 5. 执行交易
+        executed_buys, executed_sells = self.executor.execute_orders(buy_orders, sell_orders, self.qmt)
+        logger.info(f"执行完成: 买入成交 {len(executed_buys)} 笔，卖出成交 {len(executed_sells)} 笔")
 
+        # 6. 记录交易
+        if self.executor.today_trades:
+            self.evaluator.save_trades(self.executor.today_trades)
 
-        self.after_close()
-        logger.info("========== 本次运行结束 ==========")
+        self.last_rebalance_date = today
+        logger.info("========== 基准调仓结束 ==========")
+
+    def intraday_trade_once(self):
+        """执行一次盘中动态交易（基于技术信号）"""
+        if not Config.INTRADAY_TRADING:
+            return
+
+        # 仅交易时段内执行
+        if not is_trading_time():
+            return
+
+        # 冷却检查（全局扫描间隔）
+        now_ts = time.time()
+        if now_ts - self.last_intraday_ts < Config.INTRADAY_SCAN_INTERVAL:
+            return
+        self.last_intraday_ts = now_ts
+
+        # 需要缓存的目标持仓
+        if not self.cached_target_holdings:
+            logger.debug("无缓存模型数据，跳过盘中交易")
+            return
+
+        # 获取当前账户和持仓
+        account_info = self.qmt.get_account_info()
+        if not account_info:
+            return
+        current_positions = self.qmt.get_positions()
+
+        buy_orders, sell_orders = self._generate_dynamic_orders(
+            current_positions,
+            self.cached_target_holdings,
+            account_info['total_asset'],
+            self.cached_position_factor,
+            account_info['available_cash']
+        )
+
+        if buy_orders or sell_orders:
+            logger.info(f"盘中动态信号: 买入 {len(buy_orders)} 条, 卖出 {len(sell_orders)} 条")
+            self.executor.execute_orders(buy_orders, sell_orders, self.qmt)
+            # 保存交易记录
+            if self.executor.today_trades:
+                self.evaluator.save_trades(self.executor.today_trades)
+
+    def _generate_dynamic_orders(self, current_positions, target_holdings,
+                                 total_asset, position_factor, available_cash):
+        """
+        基于实时价格与N分钟均线偏差生成动态买卖订单
+        """
+        buy_orders = []
+        sell_orders = []
+        now_ts = time.time()
+
+        # 初始化冷却字典
+        if not hasattr(self, "last_dynamic_trade_time"):
+            self.last_dynamic_trade_time = {}
+
+        trade_ratio = getattr(Config, "TRADE_RATIO", 1.0)
+        risk_asset = total_asset * trade_ratio * position_factor
+
+        for holding in target_holdings:
+            code = holding["code"]
+            real_price = self.qmt.get_realtime_price(code)
+            if real_price is None:
+                continue
+
+            dyn_price = self.qmt.get_dynamic_reference_price(code, Config.LOOKBACK_MINUTES)
+            if dyn_price is None or dyn_price <= 0:
+                continue
+
+            deviation = (real_price - dyn_price) / dyn_price * 100
+
+            # 冷却时间检查
+            last_time = self.last_dynamic_trade_time.get(code, 0)
+            if now_ts - last_time < Config.INTRADAY_COOLDOWN_SEC:
+                continue
+
+            pos = current_positions.get(code, {})
+            current_vol = pos.get("volume", 0)
+            can_sell = pos.get("can_sell", 0)
+            avg_price = pos.get("avg_price", 0)
+
+            # 买入信号：价格低于均线且低于阈值
+            if deviation <= Config.BUY_THRESHOLD_PCT:
+                # 滑点控制：实际价格不能高于均线*(1 - slippage)
+                if real_price > dyn_price * (1 - Config.SLIPPAGE):
+                    continue
+
+                # 计算目标持仓股数（基于模型权重）
+                target_vol = TradeSignalGenerator.calculate_target_volume(
+                    risk_asset,
+                    holding["weight"] * position_factor,
+                    real_price
+                )
+                buy_vol = max(0, target_vol - current_vol)
+                buy_vol = (buy_vol // 100) * 100
+                if buy_vol >= 100:
+                    buy_orders.append({
+                        "code": code,
+                        "volume": buy_vol,
+                        "price": real_price,
+                        "name": holding["name"]
+                    })
+                    self.last_dynamic_trade_time[code] = now_ts
+
+            # 卖出信号：价格高于均线且高于阈值
+            elif deviation >= Config.SELL_THRESHOLD_PCT:
+                # 滑点控制：实际价格不能低于均线*(1+slippage)
+                if real_price < dyn_price * (1 + Config.SLIPPAGE):
+                    continue
+                # 避免亏损卖出（可选）
+                if avg_price > 0 and real_price < avg_price * (1 + Config.SLIPPAGE):
+                    continue
+
+                # 计算需要卖出的股数（超出目标的部分）
+                target_vol = TradeSignalGenerator.calculate_target_volume(
+                    risk_asset,
+                    holding["weight"] * position_factor,
+                    real_price
+                )
+                excess = current_vol - target_vol
+                if excess > 0:
+                    sell_vol = min(can_sell, excess)
+                    sell_vol = (sell_vol // 100) * 100
+                    if sell_vol >= 100:
+                        # 卖出价使用当前市价（正常时段约束由后续订单执行时处理，但这里直接使用市价）
+                        sell_orders.append({
+                            "code": code,
+                            "volume": sell_vol,
+                            "price": real_price,
+                            "name": holding["name"],
+                            "pre_close": self.qmt.get_pre_close(code)
+                        })
+                        self.last_dynamic_trade_time[code] = now_ts
+
+        return buy_orders, sell_orders
+
+    def force_sell_at_close(self):
+        """尾盘强制卖出：撤销未成交委托，独立计算需卖出的股票，无价格下限卖出"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        if self.last_force_sell_date == today:
+            logger.info("今日已完成尾盘强制卖出，跳过")
+            return
+
+        logger.info("========== 尾盘强制卖出开始 ==========")
+
+        # 1. 撤销所有未成交卖出委托
+        pending_orders = self.qmt.get_pending_sell_orders()
+        if pending_orders:
+            logger.info(f"发现 {len(pending_orders)} 笔未成交卖出委托，开始撤销...")
+            for order in pending_orders:
+                self.qmt.cancel_order(order.m_nOrderID)
+                time.sleep(0.5)
+            time.sleep(2)  # 等待撤单生效
+
+        # 2. 获取最新模型数据
+        if self.cached_target_holdings is None:
+            logger.info("无缓存模型数据，重新加载模型")
+            model_data = self.model_loader.load_latest_model()
+            if not model_data:
+                logger.error("强制卖出：模型加载失败，无法计算需要卖出的股票")
+                return
+            target_holdings, position_factor = self.model_loader.parse_model(model_data)
+            self.cached_target_holdings = target_holdings
+            self.cached_position_factor = position_factor
+        else:
+            target_holdings = self.cached_target_holdings
+            position_factor = self.cached_position_factor
+
+        if not target_holdings:
+            logger.error("强制卖出：无有效目标持仓，无法计算")
+            return
+
+        # 3. 获取最新账户信息与持仓
+        account_info = self.qmt.get_account_info()
+        if not account_info:
+            logger.error("强制卖出：获取账户信息失败")
+            return
+        total_asset = account_info['total_asset']
+        available_cash = account_info['available_cash']
+
+        current_positions = self.qmt.get_positions()
+
+        # 4. 独立计算需要卖出的股票（与正常时段逻辑一致，但不考虑价格约束）
+        # 构建目标股数字典
+        trade_ratio = Config.TRADE_RATIO
+        effective_total_asset = total_asset * trade_ratio
+        risk_adjusted_asset = effective_total_asset * position_factor
+
+        target_vol_dict = {}
+        for h in target_holdings:
+            code = h['code']
+            effective_weight = h['weight'] * position_factor
+            # 强制卖出时，使用最新价作为参考价（仅用于计算股数）
+            price = self.qmt.get_realtime_price(code)
+            if price is None or price <= 0:
+                price = h['ref_price']
+            target_vol = TradeSignalGenerator.calculate_target_volume(risk_adjusted_asset, effective_weight, price)
+            if target_vol > 0:
+                target_vol_dict[code] = target_vol
+
+        # 生成强制卖出列表（当前持仓超出目标的部分）
+        force_sell_list = []
+        for code, pos in current_positions.items():
+            target_vol = target_vol_dict.get(code, 0)
+            if pos['volume'] > target_vol:
+                sell_vol = min(pos['can_sell'], pos['volume'] - target_vol)
+                if sell_vol > 0:
+                    force_sell_list.append({
+                        'code': code,
+                        'volume': sell_vol,
+                        'name': code,   # 名称可从缓存中获取
+                        'pre_close': self.qmt.get_pre_close(code)
+                    })
+
+        if not force_sell_list:
+            logger.info("尾盘强制卖出：无需要卖出的股票")
+            return
+
+        logger.info(f"尾盘需要强制卖出 {len(force_sell_list)} 只股票")
+        force_trades = []
+
+        for item in force_sell_list:
+            code = item['code']
+            sell_vol = item['volume']
+
+            # 获取最优卖出价（无价格下限）
+            price = self.qmt.get_sell_price_unconstrained(code)
+            if price is None or price <= 0:
+                logger.warning(f"{code} 无法获取有效市价，放弃强制卖出")
+                continue
+
+            # 检查跌停
+            if self.qmt.is_limit_up_down(code, price, 'sell'):
+                logger.warning(f"{code} 已跌停，无法卖出")
+                continue
+
+            logger.info(f"尾盘强制卖出 {code} {sell_vol}股 @ {price:.2f} (无价格下限)")
+            success = self.qmt.place_order(code, 'sell', sell_vol, price)
+            if success:
+                force_trades.append({
+                    '时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    '股票代码': code,
+                    '股票名称': item.get('name', code),
+                    '方向': '强制卖出',
+                    '委托数量': sell_vol,
+                    '成交价': price,
+                    '成交金额': sell_vol * price,
+                })
+            time.sleep(Config.ORDER_INTERVAL)
+
+        # 5. 保存强制卖出记录
+        if force_trades:
+            self.evaluator.save_trades(force_trades)
+            self.executor.today_trades.extend(force_trades)
+
+        # 6. 最后再撤销一次残留委托
+        final_pending = self.qmt.get_pending_sell_orders()
+        if final_pending:
+            logger.warning(f"仍有 {len(final_pending)} 笔未成交卖出委托，再次撤销")
+            for order in final_pending:
+                self.qmt.cancel_order(order.m_nOrderID)
+                time.sleep(0.5)
+
+        self.last_force_sell_date = today
+        logger.info("========== 尾盘强制卖出结束 ==========")
 
     def after_close(self):
-        positions = self.qmt.get_positions()
-        account = self.qmt.get_account_info()
-        total = account.get('total_asset', 0) if account else 0
-        self.evaluator.save_position_snapshot(positions, total)
+        """收盘后任务：保存持仓快照（仅在15:00后执行）"""
+        now = datetime.now()
+        close_time = datetime(now.year, now.month, now.day, 15, 0, 0)
+        if now < close_time:
+            logger.debug(f"当前 {now.strftime('%H:%M')} 未收盘，跳过持仓快照")
+            return
 
-# ========================= 入口 =========================
+        positions = self.qmt.get_positions()
+        account_info = self.qmt.get_account_info()
+        total_asset = account_info.get('total_asset', 0) if account_info else 0
+        self.evaluator.save_position_snapshot(positions, total_asset)
+        logger.info("收盘后任务完成：持仓快照已保存")
+
+    def run_full_day_once(self):
+        """一次完整交易日执行（早盘调仓 → 盘中动态交易 → 尾盘强制卖出 → 收盘快照）"""
+        logger.info("========== SIRIUS 完整交易日开始 ==========")
+
+        # 早盘调仓（仅在9:30-10:00执行，若不在该时段则等待或跳过）
+        if is_opening_period():
+            self.run_once()
+        else:
+            logger.info("当前不在早盘调仓时段（9:30-10:00），跳过基准调仓")
+
+        # 盘中交易循环
+        logger.info("进入盘中交易阶段")
+        while True:
+            now = datetime.now()
+            if not is_trading_time():
+                break
+            # 到达尾盘强制卖出时间则退出循环
+            if now.hour > Config.FORCE_SELL_HOUR or (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE):
+                break
+            self.intraday_trade_once()
+            time.sleep(Config.INTRADAY_SCAN_INTERVAL)
+
+        # 尾盘强制卖出
+        self.force_sell_at_close()
+
+        # 收盘快照
+        self.after_close()
+
+        logger.info("========== SIRIUS 完整交易日结束 ==========")
+
+# ========================= 辅助函数 =========================
 def is_trading_time() -> bool:
-    now = now_cn()
+    """判断当前是否在交易时段（9:30-11:30, 13:00-15:00）"""
+    now = datetime.now()
     if now.weekday() >= 5:
         return False
-    t = now.time()
-    return (datetime.strptime("09:30", "%H:%M").time() <= t <= datetime.strptime("11:30", "%H:%M").time()) or \
-           (datetime.strptime("13:00", "%H:%M").time() <= t <= datetime.strptime("15:00", "%H:%M").time())
+    current_time = now.time()
+    morning_start = datetime.strptime("09:30", "%H:%M").time()
+    morning_end = datetime.strptime("11:30", "%H:%M").time()
+    afternoon_start = datetime.strptime("13:00", "%H:%M").time()
+    afternoon_end = datetime.strptime("15:00", "%H:%M").time()
+    return (morning_start <= current_time <= morning_end) or (afternoon_start <= current_time <= afternoon_end)
 
+def is_opening_period() -> bool:
+    """判断是否在早盘调仓窗口（9:30-10:00）"""
+    now = datetime.now().time()
+    start = datetime.strptime("09:30", "%H:%M").time()
+    end = datetime.strptime("10:00", "%H:%M").time()
+    return start <= now <= end
+
+# ========================= 主入口 =========================
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--mode', choices=['once', 'daemon'], default='once')
+    parser = argparse.ArgumentParser(description='SIRIUS T+1 自动交易机器人（尾盘强制卖出版）')
+    parser.add_argument('--mode', choices=['once', 'daemon'], default='once',
+                        help='运行模式: once-执行一次完整交易日流程后退出; daemon-守护模式，每天自动执行')
+    parser.add_argument('--snapshot-only', action='store_true',
+                        help='仅执行收盘快照，不交易（用于收盘后调用）')
     args = parser.parse_args()
 
     bot = SIRIUSBot()
     if not bot.qmt.connect():
-        logger.error("QMT 连接失败")
+        logger.error("QMT 连接失败，程序退出")
         sys.exit(1)
 
     if args.mode == 'once':
-        bot.run_once()
-    else:
-        last_date = None
+        if args.snapshot_only:
+            bot.after_close()
+        else:
+            bot.run_full_day_once()
+    else:  # daemon 模式
+        logger.info("启动守护模式（单线程调度器）")
         while True:
+            now = datetime.now()
+            today = now.strftime("%Y-%m-%d")
+            # 仅在交易日运行
+            if now.weekday() >= 5:
+                time.sleep(60)
+                continue
+
             try:
-                now = now_cn()
-                today = now.strftime("%Y-%m-%d")
+                # 早盘调仓时段（9:30-10:00）
+                if is_opening_period() and bot.last_rebalance_date != today:
+                    bot.run_once()
 
-                # ✅ 仅在交易时间触发
-                if is_trading_time():
+                # 盘中交易时段（9:30-15:00，但避开尾盘强制卖出时段）
+                elif is_trading_time() and not (now.hour > Config.FORCE_SELL_HOUR or
+                                                (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE)):
+                    bot.intraday_trade_once()
 
-                    # ✅ 防止重复执行
-                    if last_date != today:
-                        logger.info(f"进入交易时间，开始调仓 {today}")
+                # 尾盘强制卖出（14:50后）
+                if (now.hour > Config.FORCE_SELL_HOUR or
+                    (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE)) and bot.last_force_sell_date != today:
+                    bot.force_sell_at_close()
 
-                        try:
-                            bot.run_once()
-                            last_date = today
-                        except Exception as e:
-                            logger.error(f"run_once 执行异常: {e}", exc_info=True)
+                # 收盘后快照（15:00后，每天一次）
+                if now.hour >= 15 and bot.last_rebalance_date == today and not hasattr(bot, '_snapshot_done'):
+                    bot.after_close()
+                    bot._snapshot_done = True
 
-                else:
-                    # ✅ 非交易时间重置（关键！防止跨天问题）
-                    if last_date != today:
-                        logger.info(f"非交易时间，等待开盘... 当前日期: {today}")
-
-                # ✅ 更灵敏轮询（如需修改为 → 30秒）
-                #time.sleep(30)
-                time.sleep(5 + random.uniform(0, 2))
+                # 跨日重置标志
+                if bot.last_rebalance_date != today:
+                    bot._snapshot_done = False
 
             except Exception as e:
-                logger.error(f"主循环异常: {e}", exc_info=True)
-                time.sleep(10)  # 防止异常风暴
+                logger.error(f"守护模式异常: {e}", exc_info=True)
+
+            time.sleep(5)   # 短暂休眠，避免CPU过载
