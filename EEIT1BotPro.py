@@ -192,6 +192,7 @@ class QMTClient:
         self.connected = False
         self.lock = threading.RLock()
         self.code_to_name = {} # 新增名称映射缓存
+        self.last_dynamic_trade_time = {}
 
     def connect(self) -> bool:
         if not XT_AVAILABLE:
@@ -538,7 +539,7 @@ class PerformanceEvaluator:
             records.append({
                 '日期': datetime.now().strftime('%Y-%m-%d'),
                 '股票代码': code,
-                '股票名称': code_to_name.get(code, "未知"), # 新增字段
+                '股票名称': name_map.get(code, code), # 新增名称字段
                 '持股数量': pos['volume'],
                 '可卖数量': pos.get('can_sell', pos['volume']),
                 '成本价': pos['avg_price'],
@@ -634,69 +635,75 @@ class SIRIUSBot:
         buy_orders = []
         sell_orders = []
         now_ts = time.time()
-        trade_ratio = Config.TRADE_RATIO
-        risk_asset = total_asset * trade_ratio * position_factor
+        risk_asset = total_asset * Config.TRADE_RATIO * position_factor
 
         for holding in target_holdings:
             code = holding["code"]
+            ref_price = holding["ref_price"]  # 模型参考价
+            stk_name = holding.get("name", self.code_to_name.get(code, code))
+            
+            # 获取实时行情
             real_price = self.qmt.get_realtime_price(code)
-            if real_price is None:
-                continue
+            if real_price is None or real_price <= 0: continue
+            
+            # 获取昨收价 (用于卖出参考)
+            pre_close = self.qmt.get_pre_close(code)
+            if pre_close is None or pre_close <= 0: pre_close = ref_price # 兜底使用refPrice
+
+            # 获取动态均线
             dyn_price = self.qmt.get_dynamic_reference_price(code, Config.LOOKBACK_MINUTES)
-            if dyn_price is None or dyn_price <= 0:
-                continue
+            if dyn_price is None or dyn_price <= 0: continue
 
             deviation = (real_price - dyn_price) / dyn_price * 100
-
-            last_time = self.last_dynamic_trade_time.get(code, 0)
-            if now_ts - last_time < Config.INTRADAY_COOLDOWN_SEC:
+            
+            # 冷却检查
+            if now_ts - self.last_dynamic_trade_time.get(code, 0) < Config.INTRADAY_COOLDOWN_SEC:
                 continue
 
             pos = current_positions.get(code, {})
             current_vol = pos.get("volume", 0)
             can_sell = pos.get("can_sell", 0)
-            avg_price = pos.get("avg_price", 0)
 
-            # 买入信号
+            # ================= [修改后的买入逻辑] =================
+            # 条件1：满足均线偏离度（低吸）
+            # 条件2：实时价不能高于模型参考价太多（参考 refPrice）
             if deviation <= Config.BUY_THRESHOLD_PCT:
-                if real_price > dyn_price * (1 - Config.SLIPPAGE):
+                # 价格保护：如果实时价比模型 refPrice 贵了超过 0.5%，则不买
+                if real_price > ref_price * (1 + 0.005): 
+                    logger.debug(f"跳过买入 {stk_name}: 现价 {real_price} 远高于模型参考价 {ref_price}")
                     continue
+                
                 target_vol = TradeSignalGenerator.calculate_target_volume(
-                    risk_asset, holding["weight"] * position_factor, real_price
+                    risk_asset, holding["weight"], real_price
                 )
-                buy_vol = max(0, target_vol - current_vol)
-                buy_vol = (buy_vol // 100) * 100
+                buy_vol = (max(0, target_vol - current_vol) // 100) * 100
+                
                 if buy_vol >= 100:
                     buy_orders.append({
-                        "code": code,
-                        "volume": buy_vol,
-                        "price": real_price,
-                        "name": holding["name"]
+                        "code": code, "volume": buy_vol, "price": real_price, "name": stk_name
                     })
                     self.last_dynamic_trade_time[code] = now_ts
 
-            # 卖出信号
+            # ================= [修改后的卖出逻辑] =================
+            # 条件1：满足均线偏离度（高抛）
+            # 条件2：实时价必须高于或接近昨日收盘价（参考 pre_close）
             elif deviation >= Config.SELL_THRESHOLD_PCT:
-                if real_price < dyn_price * (1 + Config.SLIPPAGE):
+                # 价格保护：如果实时价比昨收价还低超过 0.5%，说明还在亏损或走弱，不触发动态卖出
+                if real_price < pre_close * (1 - 0.005):
+                    logger.debug(f"跳过卖出 {stk_name}: 现价 {real_price} 低于昨收价 {pre_close}")
                     continue
-                if avg_price > 0 and real_price < avg_price * (1 + Config.SLIPPAGE):
-                    continue
+
                 target_vol = TradeSignalGenerator.calculate_target_volume(
-                    risk_asset, holding["weight"] * position_factor, real_price
+                    risk_asset, holding["weight"], real_price
                 )
                 excess = current_vol - target_vol
-                if excess > 0:
-                    sell_vol = min(can_sell, excess)
-                    sell_vol = (sell_vol // 100) * 100
-                    if sell_vol >= 100:
-                        sell_orders.append({
-                            "code": code,
-                            "volume": sell_vol,
-                            "price": real_price,
-                            "name": holding["name"],
-                            "pre_close": self.qmt.get_pre_close(code)
-                        })
-                        self.last_dynamic_trade_time[code] = now_ts
+                sell_vol = (min(can_sell, excess) // 100) * 100
+                
+                if sell_vol >= 100:
+                    sell_orders.append({
+                        "code": code, "volume": sell_vol, "price": real_price, "name": stk_name
+                    })
+                    self.last_dynamic_trade_time[code] = now_ts
 
         return buy_orders, sell_orders
 
@@ -818,6 +825,8 @@ class SIRIUSBot:
             logger.debug(f"当前 {now.strftime('%H:%M')} 未收盘，跳过持仓快照")
             return
         positions = self.qmt.get_positions()
+        # 传入名称映射表
+        self.evaluator.save_position_snapshot(positions, total_asset, self.code_to_name)          
         account_info = self.qmt.get_account_info()
         total_asset = account_info.get('total_asset', 0) if account_info else 0
         self.evaluator.save_position_snapshot(positions, total_asset)
