@@ -55,6 +55,7 @@ class Config:
     MAX_ORDER_VOLUME = 1000000
     TRADE_RATIO = 0.5               # 资金使用比例（0.5 表示只用一半资金）
     SLIPPAGE = 0.002                # 滑点容忍度（0.2%）
+    PRICE_TOLERANCE = 0.005 
     ORDER_INTERVAL = 1.0
     REAL_TRADE = True
     DEBUG = True
@@ -639,18 +640,16 @@ class SIRIUSBot:
 
         for holding in target_holdings:
             code = holding["code"]
-            ref_price = holding["ref_price"]  # 模型参考价
-            stk_name = holding.get("name", self.code_to_name.get(code, code))
+            ref_price = holding["ref_price"]  # 模型输出的参考价（通常是昨收）
+            stk_name = self.code_to_name.get(code, code)
             
-            # 获取实时行情
             real_price = self.qmt.get_realtime_price(code)
             if real_price is None or real_price <= 0: continue
             
-            # 获取昨收价 (用于卖出参考)
+            # 真实交易中，卖出参考的“昨收价”通过 QMT 获取更准确
             pre_close = self.qmt.get_pre_close(code)
-            if pre_close is None or pre_close <= 0: pre_close = ref_price # 兜底使用refPrice
+            if pre_close is None or pre_close <= 0: pre_close = ref_price
 
-            # 获取动态均线
             dyn_price = self.qmt.get_dynamic_reference_price(code, Config.LOOKBACK_MINUTES)
             if dyn_price is None or dyn_price <= 0: continue
 
@@ -664,46 +663,38 @@ class SIRIUSBot:
             current_vol = pos.get("volume", 0)
             can_sell = pos.get("can_sell", 0)
 
-            # ================= [修改后的买入逻辑] =================
-            # 条件1：满足均线偏离度（低吸）
-            # 条件2：实时价不能高于模型参考价太多（参考 refPrice）
+            # ================= [买入逻辑：对齐回测] =================
             if deviation <= Config.BUY_THRESHOLD_PCT:
-                # 价格保护：如果实时价比模型 refPrice 贵了超过 0.5%，则不买
-                if real_price > ref_price * (1 + 0.005): 
-                    logger.debug(f"跳过买入 {stk_name}: 现价 {real_price} 远高于模型参考价 {ref_price}")
-                    continue
-                
-                target_vol = TradeSignalGenerator.calculate_target_volume(
-                    risk_asset, holding["weight"], real_price
-                )
-                buy_vol = (max(0, target_vol - current_vol) // 100) * 100
-                
-                if buy_vol >= 100:
-                    buy_orders.append({
-                        "code": code, "volume": buy_vol, "price": real_price, "name": stk_name
-                    })
-                    self.last_dynamic_trade_time[code] = now_ts
+                # 使用 Config 里的容忍度
+                if real_price <= ref_price * (1 + Config.PRICE_TOLERANCE):
+                    target_vol = TradeSignalGenerator.calculate_target_volume(
+                        risk_asset, holding["weight"], real_price
+                    )
+                    buy_vol = ((target_vol - current_vol) // 100) * 100
+                    if buy_vol >= 100:
+                        buy_orders.append({
+                            "code": code, "volume": buy_vol, "price": real_price, "name": stk_name
+                        })
+                        self.last_dynamic_trade_time[code] = now_ts
+                else:
+                    logger.debug(f"⚠️ {stk_name} 触发买入信号但价格过高: 现价{real_price} > 参考价{ref_price}*(1+{Config.PRICE_TOLERANCE})")
 
-            # ================= [修改后的卖出逻辑] =================
-            # 条件1：满足均线偏离度（高抛）
-            # 条件2：实时价必须高于或接近昨日收盘价（参考 pre_close）
+            # ================= [卖出逻辑：对齐回测] =================
             elif deviation >= Config.SELL_THRESHOLD_PCT:
-                # 价格保护：如果实时价比昨收价还低超过 0.5%，说明还在亏损或走弱，不触发动态卖出
-                if real_price < pre_close * (1 - 0.005):
-                    logger.debug(f"跳过卖出 {stk_name}: 现价 {real_price} 低于昨收价 {pre_close}")
-                    continue
-
-                target_vol = TradeSignalGenerator.calculate_target_volume(
-                    risk_asset, holding["weight"], real_price
-                )
-                excess = current_vol - target_vol
-                sell_vol = (min(can_sell, excess) // 100) * 100
-                
-                if sell_vol >= 100:
-                    sell_orders.append({
-                        "code": code, "volume": sell_vol, "price": real_price, "name": stk_name
-                    })
-                    self.last_dynamic_trade_time[code] = now_ts
+                # 使用 Config 里的容忍度
+                if real_price >= pre_close * (1 - Config.PRICE_TOLERANCE):
+                    target_vol = TradeSignalGenerator.calculate_target_volume(
+                        risk_asset, holding["weight"], real_price
+                    )
+                    excess = current_vol - target_vol
+                    sell_vol = (min(can_sell, excess) // 100) * 100
+                    if sell_vol >= 100:
+                        sell_orders.append({
+                            "code": code, "volume": sell_vol, "price": real_price, "name": stk_name
+                        })
+                        self.last_dynamic_trade_time[code] = now_ts
+                else:
+                    logger.debug(f"⚠️ {stk_name} 触发卖出信号但价格过低: 现价{real_price} < 昨收{pre_close}*(1-{Config.PRICE_TOLERANCE})")
 
         return buy_orders, sell_orders
 
