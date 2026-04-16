@@ -37,7 +37,7 @@ except ImportError:
 # ========================= 配置部分 =========================
 class Config:
     """真实交易配置（请根据实际情况修改）"""
-    QMT_PATH = r"E:\国金证券QMT交易端\userdata_mini"
+    QMT_PATH = r"D:\国金证券QMT交易端\userdata_mini"
     ACCOUNT_ID = "8886036261"
 
     MODEL_URL = "https://raw.githubusercontent.com/digital-era/AIPEQModel/main/流入模型_New.json"
@@ -45,15 +45,15 @@ class Config:
     REQUEST_TIMEOUT = 30
     REQUEST_RETRIES = 3
 
-    LOG_DIR = r"D:\AIPEQModelSIRIUS\Real\SIRIUS_Bot_Logs"
+    LOG_DIR = r"D:\AIPEQModelSIRIUS\static\SIRIUS_Bot_Logs"
     TRADE_RECORD_PATH = os.path.join(LOG_DIR, "trade_records.xlsx")
     POSITION_SNAPSHOT_PATH = os.path.join(LOG_DIR, "position_snapshots.xlsx")
 
     MORNING_TRADE_TIME = dt_time(9, 45)   # 上午调仓时间点
 
     MARKET_OPEN = datetime.strptime("09:25", "%H:%M").time()
-    MARKET_CLOSE = datetime.strptime("15:05", "%H:%M").time()  # 可调整为 15:05 更安全
-    FORCE_SELL_HOUR = 14
+    MARKET_CLOSE = datetime.strptime("23:30", "%H:%M").time()  # 可调整为 15:05 更安全
+    FORCE_SELL_HOUR = 23
     FORCE_SELL_MINUTE = 50
     
 
@@ -213,28 +213,158 @@ class QMTClient:
         """
         if not stock_codes:
             return
+        
+        # 强制转换并验证股票代码格式
+        valid_codes = []
+        for code in stock_codes:
+            # 确保是字符串类型
+            str_code = str(code).strip()  # 去除首尾空白字符
+            
+            if '.' in str_code:
+                parts = str_code.split('.')
+                if len(parts) == 2:
+                    stock_part = parts[0].strip().zfill(6)  # 补齐到6位数字，去除空格
+                    market_part = parts[1].strip().upper()   # 转大写，去除空格
+                    
+                    # 验证股票代码部分是否为纯数字
+                    if stock_part.isdigit() and len(stock_part) == 6:
+                        # 验证市场部分是否有效
+                        if market_part in ['SH', 'SZ']:
+                            standardized_code = f"{stock_part}.{market_part}"
+                            valid_codes.append(standardized_code)
+                        else:
+                            logger.warning(f"不支持的市场标识 '{market_part}'，股票代码: {code}")
+                    else:
+                        logger.warning(f"股票代码部分不是6位纯数字: {code}")
+                else:
+                    logger.warning(f"股票代码格式错误，应为 'code.market' 格式: {code}")
+            else:
+                logger.warning(f"缺少市场后缀的股票代码: {code}")
+        
+        if not valid_codes:
+            logger.warning("没有有效的股票代码，跳过订阅")
+            return
+        
+        # 确保是新的list对象，避免潜在的引用问题
+        valid_codes = list(valid_codes)
+        
         # 去重
         if period == 'tick':
-            new_codes = [c for c in stock_codes if c not in self.subscribed_stocks]
+            # 创建当前周期已订阅股票的副本，避免并发问题
+            current_subscribed = set(self.subscribed_stocks)
+            new_codes = [c for c in valid_codes if c not in current_subscribed]
+            
             if new_codes:
-                xtdata.subscribe_quote(new_codes, period='tick')
-                self.subscribed_stocks.update(new_codes)
-                logger.info(f"订阅 {len(new_codes)} 只股票的 tick 行情")
+                try:
+                    logger.info(f"准备订阅 {len(new_codes)} 只股票的 tick 行情，股票代码: {new_codes}")
+                    
+                    # 确保传入的是干净的字符串列表
+                    clean_codes = [str(code).strip() for code in new_codes]
+                    
+                    # 调用QMT接口
+                    result = xtdata.subscribe_quote(clean_codes, period='tick')
+                    
+                    # 更新内部状态
+                    self.subscribed_stocks.update(clean_codes)
+                    
+                    logger.info(f"成功订阅 {len(clean_codes)} 只股票的 tick 行情")
+                    
+                    if result is not None:
+                        logger.debug(f"订阅返回值: {result}")
+                        
+                except Exception as e:
+                    error_msg = str(e)
+                    logger.error(f"订阅 tick 行情失败: {error_msg}")
+                    
+                    # 逐个尝试订阅
+                    success_count = 0
+                    for code in clean_codes:
+                        try:
+                            single_result = xtdata.subscribe_quote([code], period='tick')
+                            self.subscribed_stocks.add(code)
+                            success_count += 1
+                            logger.debug(f"单独订阅 {code} tick 行情成功")
+                            
+                            if single_result is not None:
+                                logger.debug(f"单独订阅 {code} 返回值: {single_result}")
+                                
+                        except Exception as single_e:
+                            logger.error(f"单独订阅 {code} tick 行情失败: {str(single_e)}")
+                    
+                    logger.info(f"逐个订阅 tick 行情完成，成功: {success_count}, 总计: {len(clean_codes)}")
+                    
         elif period == '1m':
-            new_codes = [c for c in stock_codes if c not in self.subscribed_minute_stocks]
+            current_subscribed = set(self.subscribed_minute_stocks)
+            new_codes = [c for c in valid_codes if c not in current_subscribed]
+            
             if new_codes:
-                xtdata.subscribe_quote(new_codes, period='1m')
-                self.subscribed_minute_stocks.update(new_codes)
-                logger.info(f"订阅 {len(new_codes)} 只股票的 1分钟线行情")
+                try:
+                    logger.info(f"准备订阅 {len(new_codes)} 只股票的 1m 行情，股票代码: {new_codes}")
+                    
+                    # 确保传入的是干净的字符串列表
+                    clean_codes = [str(code).strip() for code in new_codes]
+                    
+                    # 调用QMT接口
+                    result = xtdata.subscribe_quote(clean_codes, period='1m')
+                    
+                    # 更新内部状态
+                    self.subscribed_minute_stocks.update(clean_codes)
+                    
+                    logger.info(f"成功订阅 {len(clean_codes)} 只股票的 1分钟线行情")
+                    
+                    if result is not None:
+                        logger.debug(f"订阅返回值: {result}")
+                        
+                except Exception as e:
+                    error_msg = str(e)
+                    logger.error(f"订阅 1m 行情失败: {error_msg}")
+                    
+                    # 逐个尝试订阅
+                    success_count = 0
+                    for code in clean_codes:
+                        try:
+                            single_result = xtdata.subscribe_quote([code], period='1m')
+                            self.subscribed_minute_stocks.add(code)
+                            success_count += 1
+                            logger.debug(f"单独订阅 {code} 1m 行情成功")
+                            
+                            if single_result is not None:
+                                logger.debug(f"单独订阅 {code} 返回值: {single_result}")
+                                
+                        except Exception as single_e:
+                            logger.error(f"单独订阅 {code} 1m 行情失败: {str(single_e)}")
+                    
+                    logger.info(f"逐个订阅 1m 行情完成，成功: {success_count}, 总计: {len(clean_codes)}")
         else:
             logger.warning(f"不支持的订阅周期: {period}")
 
     def subscribe_all_periods(self, stock_codes: List[str]):
         """同时订阅 tick 和 1m 行情"""
-        self.subscribe_stocks(stock_codes, period='tick')
-        self.subscribe_stocks(stock_codes, period='1m')
-        # 可选：等待数据同步（首次订阅后稍作延迟）
+        if not stock_codes:
+            logger.warning("股票代码列表为空，跳过订阅")
+            return
+        
+        logger.info(f"开始同时订阅 {len(stock_codes)} 只股票的 tick 和 1m 行情")
+        
+        # 先订阅tick行情
+        try:
+            self.subscribe_stocks(stock_codes, period='tick')
+        except Exception as e:
+            logger.error(f"订阅 tick 行情时出错: {str(e)}")
+        
+        # 稍作延迟，避免同时大量请求
+        time.sleep(0.2)
+        
+        # 再订阅1m行情
+        try:
+            self.subscribe_stocks(stock_codes, period='1m')
+        except Exception as e:
+            logger.error(f"订阅 1m 行情时出错: {str(e)}")
+        
+        # 等待数据同步（首次订阅后稍作延迟）
         time.sleep(1)
+        
+        logger.info("完成 tick 和 1m 行情订阅")
 
     def connect(self) -> bool:
         if not XT_AVAILABLE:
@@ -332,6 +462,7 @@ class QMTClient:
         if ref_price <= 0:
             return None
         real = self.get_realtime_price(code)
+        logger.info(f"- 标的{code}:实时价格 {real:.2f}")
         if real is None:
             return ref_price
         return min(real, ref_price)
@@ -465,6 +596,13 @@ class TradeSignalGenerator:
         buy_orders: [{"code", "volume", "price", "name"}]
         sell_orders: [{"code", "volume", "price", "name", "pre_close"}]
         """
+        logger.info("="*50)
+        logger.info("开始生成订单，输入参数详情:")
+        logger.info(f"- 总资产: {total_asset:.2f}")
+        logger.info(f"- 仓位因子: {position_factor:.2f}")
+        logger.info(f"- 可用现金: {available_cash:.2f}")
+        logger.info(f"- 当前持仓数量: {len(current_positions) if current_positions else 0}")
+        logger.info(f"- 目标持仓数量: {len(target_holdings) if target_holdings else 0}")
         # 引入资金使用比例，例如 0.5 表示只用一半资金
         trade_ratio = getattr(Config, 'TRADE_RATIO', 1.0)
         effective_total_asset = total_asset * trade_ratio
@@ -476,7 +614,9 @@ class TradeSignalGenerator:
         all_names = {h['code']: h['name'] for h in target_holdings}
         for h in target_holdings:
             code = h['code']
-            effective_weight = h['weight'] * position_factor
+            #effective_weight = h['weight'] * position_factor
+            # 修改后（去掉多余的乘以 position_factor）：
+            effective_weight = h['weight']
             buy_price = qmt_client.get_buy_price_constrained(code, h['ref_price'])
             if buy_price is None:
                 logger.warning(f"{code} 无法获取有效买入价格，跳过")
@@ -947,7 +1087,7 @@ if __name__ == "__main__":
                 if (Config.MARKET_OPEN <= current_time <= Config.MARKET_CLOSE) and not (now.hour > Config.FORCE_SELL_HOUR or
                                               (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE)):
                     
-                    if (last_trade_date != today_str) and (current_time >= Config.MORNING_TRADE_TIME:
+                    if (last_trade_date != today_str) and (current_time >= Config.MORNING_TRADE_TIME):
                         logger.info(f"进入交易时间，开始今日调仓: {today_str}")
                         bot.intraday_trade_once_static()
                         last_trade_date = today_str
