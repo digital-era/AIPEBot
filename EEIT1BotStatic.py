@@ -20,7 +20,7 @@ import logging
 import argparse
 import threading
 import requests
-from datetime import datetime, time
+from datetime import datetime, time as dt_time
 from typing import Dict, List, Optional, Tuple, Any
 import pandas as pd
 
@@ -49,7 +49,7 @@ class Config:
     TRADE_RECORD_PATH = os.path.join(LOG_DIR, "trade_records.xlsx")
     POSITION_SNAPSHOT_PATH = os.path.join(LOG_DIR, "position_snapshots.xlsx")
 
-    MORNING_TRADE_TIME = time(9, 45)   # 上午调仓时间点
+    MORNING_TRADE_TIME = dt_time(9, 45)   # 上午调仓时间点
 
     MARKET_OPEN = datetime.strptime("09:25", "%H:%M").time()
     MARKET_CLOSE = datetime.strptime("15:05", "%H:%M").time()  # 可调整为 15:05 更安全
