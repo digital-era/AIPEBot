@@ -23,7 +23,7 @@ import logging
 import argparse
 import threading
 import requests
-from datetime import datetime
+from datetime import datetime, time
 from typing import Dict, List, Optional, Tuple, Any
 import pandas as pd
 
@@ -671,6 +671,7 @@ class SIRIUSBot:
             self.executor.execute_orders(buy_orders, sell_orders, self.qmt)
             if self.executor.today_trades:
                 self.evaluator.save_trades(self.executor.today_trades)
+                self.executor.today_trades.clear()   # 添加这一行
 
     def _generate_dynamic_orders(self, current_positions, target_holdings,
                                  total_asset, position_factor, available_cash):
