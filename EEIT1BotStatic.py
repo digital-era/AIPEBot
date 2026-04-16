@@ -6,7 +6,7 @@ SIRIUS T+1 自动交易机器人 - 真实交易版（纯盘中静态 + 尾盘强
 功能：
 1. 从 GitHub 拉取最新模型 JSON（支持本地缓存）
 2. 连接 MiniQMT，获取真实账户持仓、资金、行情
-3. 买入价格 ≤ 模型基准价，卖出正常时段 ≥ 昨日收盘价
+3. 每天仅 9:45 调仓一次：买入价格 ≤ 模型基准价，卖出正常时段 ≥ 昨日收盘价 
 4. 尾盘（14:50）强制卖出所有需要卖出的股票（无价格下限，确保资金释放）
 5. 完整日志、交易记录 Excel、持仓快照
 6. 支持单次运行和守护模式
@@ -688,7 +688,7 @@ class SIRIUSBot:
         logger.info("模型数据已缓存")
 
     def intraday_trade_once_static(self):
-        """执行一次盘中动态交易（基于技术信号）"""
+        """执行一次盘中静态交易"""
         if not Config.INTRADAY_TRADING:
             return
 
@@ -717,10 +717,11 @@ class SIRIUSBot:
         )
 
         if buy_orders or sell_orders:
-            logger.info(f"盘中动态信号: 买入 {len(buy_orders)} 条, 卖出 {len(sell_orders)} 条")
+            logger.info(f"盘中静态信号: 买入 {len(buy_orders)} 条, 卖出 {len(sell_orders)} 条")
             self.executor.execute_orders(buy_orders, sell_orders, self.qmt)
             if self.executor.today_trades:
                 self.evaluator.save_trades(self.executor.today_trades)
+                self.executor.today_trades.clear()   # 添加这一行
 
 
     def force_sell_at_close(self):
@@ -908,7 +909,7 @@ def is_opening_period() -> bool:
 
 # ========================= 主入口 =========================
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='SIRIUS T+1 自动交易机器人（盘中动态+尾盘强制卖出）')
+    parser = argparse.ArgumentParser(description='SIRIUS T+1 自动交易机器人（盘中静态+尾盘强制卖出）')
     parser.add_argument('--mode', choices=['once', 'daemon'], default='once',
                         help='运行模式: once-执行一次完整交易日流程后退出; daemon-守护模式')
     parser.add_argument('--snapshot-only', action='store_true',
@@ -927,14 +928,12 @@ if __name__ == "__main__":
             bot.run_full_day_once_static()
     else:  # daemon 模式
         logger.info("启动守护模式（单线程调度器）")
-        last_force_sell_date = "" 
-        
-        
+        last_trade_date = ""
+        last_force_sell_date = ""   # 已存在        
         while True:
             now = datetime.now()
-            current_time = now.time()            
-
-            today = now.strftime("%Y-%m-%d")
+            today_str = now.strftime("%Y-%m-%d")   # 定义 today_str
+            current_time = now.time()
             if now.weekday() >= 5:
                 time.sleep(60)
                 continue
@@ -946,9 +945,9 @@ if __name__ == "__main__":
                                               (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE)):
                     
                     if (last_trade_date != today_str) and (current_time >= time(9, 45)):
-                      logger.info(f"进入交易时间，开始今日调仓: {today_str}")
-                      bot.intraday_trade_once_static()
-                      last_trade_date = today_str
+                        logger.info(f"进入交易时间，开始今日调仓: {today_str}")
+                        bot.intraday_trade_once_static()
+                        last_trade_date = today_str
 
                 # 尾盘强制卖出（14:50后）
                 if (now.hour > Config.FORCE_SELL_HOUR or
