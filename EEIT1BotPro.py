@@ -41,7 +41,7 @@ except ImportError:
 class Config:
     """真实交易配置（请根据实际情况修改）"""
     QMT_PATH = r"E:\国金证券QMT交易端\userdata_mini"
-    ACCOUNT_ID = ""
+    ACCOUNT_ID = "8886036261"
 
     MODEL_URL = "https://raw.githubusercontent.com/digital-era/AIPEQModel/main/流入模型_New.json"
     LOCAL_MODEL_CACHE = "流入模型_New.json.cache"
@@ -52,17 +52,19 @@ class Config:
     TRADE_RECORD_PATH = os.path.join(LOG_DIR, "trade_records.xlsx")
     POSITION_SNAPSHOT_PATH = os.path.join(LOG_DIR, "position_snapshots.xlsx")
 
+    MARKET_OPEN = datetime.strptime("09:25", "%H:%M").time()
+    MARKET_CLOSE = datetime.strptime("15:05", "%H:%M").time()  # 可调整为 15:05 更安全
+    FORCE_SELL_HOUR = 14
+    FORCE_SELL_MINUTE = 50
+
     ORDER_TIMEOUT = 10
     MAX_ORDER_VOLUME = 1000000
     TRADE_RATIO = 0.5               # 资金使用比例（0.5 表示只用一半资金）
     SLIPPAGE = 0.002                # 滑点容忍度（0.2%）
-    PRICE_TOLERANCE = 0.005 
+    PRICE_TOLERANCE = 0.005
     ORDER_INTERVAL = 1.0
     REAL_TRADE = False
     DEBUG = True
-
-    FORCE_SELL_HOUR = 14
-    FORCE_SELL_MINUTE = 50
 
     INTRADAY_TRADING = True
     LOOKBACK_MINUTES = 30
@@ -105,13 +107,14 @@ logger = setup_logger()
 
 # ========================= 模型加载模块 =========================
 class ModelLoader:
-    @staticmethod
+
     def _convert_code(code: str) -> str:
         c = str(code).split('.')[0].zfill(6)
         if len(c) > 6 and (c.endswith('.SH') or c.endswith('.SZ')):
             return c
         sh_prefixes = ('60', '68', '51', '56', '58', '55', '900')
         return f"{c}.SH" if any(c.startswith(p) for p in sh_prefixes) else f"{c}.SZ"
+
 
     @staticmethod
     def _fetch_with_retry(url: str, retries: int = 3, timeout: int = 30) -> Optional[Dict]:
@@ -197,6 +200,40 @@ class QMTClient:
         self.lock = threading.RLock()
         self.code_to_name = {} # 新增名称映射缓存
         self.last_dynamic_trade_time = {}
+
+        # 新增：记录已订阅的股票和周期
+        self.subscribed_stocks = set()          # 已订阅 tick 的股票
+        self.subscribed_minute_stocks = set()   # 已订阅 1m 的股票
+
+    def subscribe_stocks(self, stock_codes: List[str], period: str = 'tick'):
+        """
+        统一订阅指定股票的行情数据（支持 tick 和 1m 周期）
+        可重复调用，内部自动去重
+        """
+        if not stock_codes:
+            return
+        # 去重
+        if period == 'tick':
+            new_codes = [c for c in stock_codes if c not in self.subscribed_stocks]
+            if new_codes:
+                xtdata.subscribe_quote(new_codes, period='tick')
+                self.subscribed_stocks.update(new_codes)
+                logger.info(f"订阅 {len(new_codes)} 只股票的 tick 行情")
+        elif period == '1m':
+            new_codes = [c for c in stock_codes if c not in self.subscribed_minute_stocks]
+            if new_codes:
+                xtdata.subscribe_quote(new_codes, period='1m')
+                self.subscribed_minute_stocks.update(new_codes)
+                logger.info(f"订阅 {len(new_codes)} 只股票的 1分钟线行情")
+        else:
+            logger.warning(f"不支持的订阅周期: {period}")
+
+    def subscribe_all_periods(self, stock_codes: List[str]):
+        """同时订阅 tick 和 1m 行情"""
+        self.subscribe_stocks(stock_codes, period='tick')
+        self.subscribe_stocks(stock_codes, period='1m')
+        # 可选：等待数据同步（首次订阅后稍作延迟）
+        time.sleep(1)
 
     def connect(self) -> bool:
         if not XT_AVAILABLE:
@@ -414,23 +451,23 @@ class QMTClient:
             end_time = datetime.now()
             # 开始时间固定为当天 09:30:00（交易时段起始）
             start_time = datetime(end_time.year, end_time.month, end_time.day, 9, 30, 0)
-            
+
             # 如果当前时间早于开盘，无法获取有效数据
             if end_time < start_time:
                 logger.debug(f"当前时间 {end_time} 早于开盘时间，跳过动态参考价获取")
                 return None
-            
+
             # 格式化时间字符串，确保长度为14位（YYYYMMDDHHMMSS）
             start_str = start_time.strftime("%Y%m%d%H%M%S").ljust(14, '0')
             end_str = end_time.strftime("%Y%m%d%H%M%S").ljust(14, '0')
-            
+
             # 订阅分钟线数据（确保数据实时同步）
-            xtdata.subscribe_quote([code], period="1m", count=minutes + 10)
-            time.sleep(1)  # 等待数据同步
-            
+            #xtdata.subscribe_quote([code], period="1m", count=minutes + 10)
+            #time.sleep(1)  # 等待数据同步
+
             # 下载历史分钟线数据（备用，确保本地有数据）
             xtdata.download_history_data(code, '1m', start_str, end_str)
-            
+
             # 获取市场数据
             data = xtdata.get_market_data(
                 field_list=['close'],
@@ -439,7 +476,7 @@ class QMTClient:
                 start_time=start_str,
                 end_time=end_str
             )
-            
+
             if data is not None and code in data:
                 df = data[code]
                 if not df.empty:
@@ -591,6 +628,9 @@ class SIRIUSBot:
         if target_holdings:
             self.code_to_name = {h['code']: h['name'] for h in target_holdings}
             self.cached_target_holdings = target_holdings
+            # 统一订阅所有目标股票的行情
+            codes = [h['code'] for h in target_holdings]
+            self.qmt.subscribe_all_periods(codes)
         if not target_holdings:
             logger.error("无有效目标持仓，无法继续")
             return
@@ -602,8 +642,7 @@ class SIRIUSBot:
         """执行一次盘中动态交易（基于技术信号）"""
         if not Config.INTRADAY_TRADING:
             return
-        if not is_trading_time():
-            return
+
         # 全局扫描间隔
         now_ts = time.time()
         if now_ts - self.last_intraday_ts < Config.INTRADAY_SCAN_INTERVAL:
@@ -644,10 +683,10 @@ class SIRIUSBot:
             code = holding["code"]
             ref_price = holding["ref_price"]  # 模型输出的参考价（通常是昨收）
             stk_name = self.code_to_name.get(code, code)
-            
+
             real_price = self.qmt.get_realtime_price(code)
             if real_price is None or real_price <= 0: continue
-            
+
             # 真实交易中，卖出参考的“昨收价”通过 QMT 获取更准确
             pre_close = self.qmt.get_pre_close(code)
             if pre_close is None or pre_close <= 0: pre_close = ref_price
@@ -656,7 +695,7 @@ class SIRIUSBot:
             if dyn_price is None or dyn_price <= 0: continue
 
             deviation = (real_price - dyn_price) / dyn_price * 100
-            
+
             # 冷却检查
             if now_ts - self.last_dynamic_trade_time.get(code, 0) < Config.INTRADAY_COOLDOWN_SEC:
                 continue
@@ -819,26 +858,47 @@ class SIRIUSBot:
             return
         positions = self.qmt.get_positions()
         # 传入名称映射表
-        self.evaluator.save_position_snapshot(positions, total_asset, self.code_to_name)          
+        self.evaluator.save_position_snapshot(positions, total_asset, self.code_to_name)
         account_info = self.qmt.get_account_info()
         total_asset = account_info.get('total_asset', 0) if account_info else 0
         self.evaluator.save_position_snapshot(positions, total_asset)
         logger.info("收盘后任务完成：持仓快照已保存")
 
     def run_full_day_once(self):
-        """一次完整交易日执行（盘中动态交易 → 尾盘强制卖出 → 收盘快照）"""
         logger.info("========== SIRIUS 完整交易日开始 ==========")
-        logger.info("进入盘中交易阶段")
+
+        # 1. 确保模型已加载（内部会订阅目标股票）
+        if self.cached_target_holdings is None:
+            self._load_model_cache()
+        
+        # 2. 获取当前持仓，订阅所有持仓股票（补订阅）
+        current_positions = self.qmt.get_positions()
+        if current_positions:
+            hold_codes = list(current_positions.keys())
+            # 去重：只订阅那些尚未订阅的（目标股票已订阅，这里自动跳过）
+            self.qmt.subscribe_all_periods(hold_codes)
+
         while True:
             now = datetime.now()
-            if not is_trading_time():
+            current_time = now.time()
+
+            # 如果当前时间不在 09:00–16:00 区间，退出整个流程
+            if not (Config.MARKET_OPEN <= current_time <= Config.MARKET_CLOSE):
+                logger.info(f"当前时间 {current_time} 超出监控区间，程序结束")
                 break
+
+            # 到达尾盘强制卖出时间，退出循环
             if now.hour > Config.FORCE_SELL_HOUR or (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE):
+                logger.info("到达尾盘强制卖出时间，退出盘中循环")
                 break
+
+            # 正常扫描
             self.intraday_trade_once()
             time.sleep(Config.INTRADAY_SCAN_INTERVAL)
 
+        # 执行尾盘卖出（仅14:50后有效）
         self.force_sell_at_close()
+        # 执行收盘快照（仅15:00后有效）
         self.after_close()
         logger.info("========== SIRIUS 完整交易日结束 ==========")
 
@@ -883,13 +943,17 @@ if __name__ == "__main__":
         logger.info("启动守护模式（单线程调度器）")
         while True:
             now = datetime.now()
+            current_time = now.time()
+
             today = now.strftime("%Y-%m-%d")
             if now.weekday() >= 5:
                 time.sleep(60)
                 continue
+
             try:
+
                 # 盘中交易时段（避开尾盘强制卖出时段）
-                if is_trading_time() and not (now.hour > Config.FORCE_SELL_HOUR or
+                if (Config.MARKET_OPEN <= current_time <= Config.MARKET_CLOSE) and not (now.hour > Config.FORCE_SELL_HOUR or
                                               (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE)):
                     bot.intraday_trade_once()
 
