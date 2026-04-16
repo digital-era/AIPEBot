@@ -1,147 +1,3 @@
-#@title Clone AIPEQModel
-
-!pip install json5
-
-#@title Commit EEIFlow*.xlsx to Github AIPEQModel
-import pandas as pd
-import numpy as np
-from openpyxl import load_workbook
-from pandas import ExcelWriter
-from google.colab import userdata # 用于获取 secrets
-import datetime
-import os # 导入 os 模块用于路径操作和文件列表
-import shutil # 导入 shutil 模块用于文件复制
-
-#%cd /content
-os.chdir('/content')
-
-# --- 1. 配置 GitHub 信息 ---
-GIT_USERNAME = "digital-era"  # 替换为你的 GitHub 用户名
-GIT_EMAIL = "digital_era@sina.com" # 替换为你的 GitHub 邮箱
-GIT_REPO_NAME = "AIPEQModel"      # 替换为你的仓库名称
-GIT_TARGET_BRANCH = "main"            # 或者 "master"，你的主要分支
-# 文件在仓库中的目标路径，例如 "data/"。如果希望直接放在仓库根目录，则留空 ""
-TARGET_REPO_PATH = "data/"
-
-GIT_PAT = None
-try:
-    GIT_PAT = userdata.get('GITHUB_PAT')
-except Exception as e:
-    print("终止操作, 因为没有 PAT 无法进行 GitHub 操作")
-    exit() # 终止执行，因为没有 PAT 无法进行 GitHub 操作
-
-# 构建克隆 URL，使用 PAT 进行认证
-# 注意：{GIT_PAT} 是从 Colab Secrets 获取的。
-GIT_URL = f"https://{GIT_USERNAME}:{GIT_PAT}@github.com/{GIT_USERNAME}/{GIT_REPO_NAME}.git"
-
-# 定义仓库将要克隆到的本地路径（在 Colab 文件系统中）
-# 通常克隆到 /content/ 目录下
-REPO_CLONE_PATH = f"/content/{GIT_REPO_NAME}"
-
-# 为了确保每次运行都从一个干净的状态开始，可以先删除旧的仓库目录（可选但推荐）
-import os
-import shutil
-if os.path.exists(REPO_CLONE_PATH):
-    shutil.rmtree(REPO_CLONE_PATH)
-    print(f"已移除旧的仓库目录: {REPO_CLONE_PATH}")
-
-print(f"正在克隆仓库 {GIT_REPO_NAME} 到 {REPO_CLONE_PATH}...")
-# 执行 git clone 命令。在 Colab 中，使用 ! 前缀来执行 shell 命令。
-!git clone $GIT_URL $REPO_CLONE_PATH
-
-# 检查克隆是否成功
-if os.path.exists(REPO_CLONE_PATH):
-    print("仓库克隆成功。")
-    # 克隆成功后，通常会切换到克隆的目录进行后续操作
-    #%cd $REPO_CLONE_PATH
-    os.chdir(REPO_CLONE_PATH)
-
-    print(f"已切换到仓库目录: {os.getcwd()}")
-else:
-    print("仓库克隆失败。请检查你的 GitHub 用户名、仓库名称或 PAT 是否正确。")
-
-
-#@title ZIP Model Files
-import os
-import zipfile
-from google.colab import files
-
-# 指定目录路径
-directory = '/content/AIPEQModel'
-
-# 压缩包文件名（可根据需要修改）
-zip_filename = '流入模型_json_files.zip'
-
-# 收集符合条件的文件
-files_to_zip = []
-for filename in os.listdir(directory):
-    if filename.startswith('流入模型_') and filename.endswith('.json'):
-        full_path = os.path.join(directory, filename)
-        files_to_zip.append(full_path)
-
-# 执行打包
-if files_to_zip:
-    with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for file_path in files_to_zip:
-            # 只保留文件名，不保留目录结构
-            arcname = os.path.basename(file_path)
-            zipf.write(file_path, arcname)
-
-    print(f"✅ 打包完成！共包含 {len(files_to_zip)} 个文件。")
-    print(f"压缩包名称：{zip_filename}")
-
-    # 自动下载到本地
-    files.download(zip_filename)
-else:
-    print("⚠️ 未在目录中找到任何以 “流入模型_” 开头的 .json 文件。")
-
-
-#@title Unzip Model Files to historical_models Directory
-import os
-import zipfile
-import shutil
-
-# 定义相关路径
-historical_dir = '/content/historical_models'
-zip_file_path = '/content/AIPEQModel/流入模型_json_files.zip'
-
-# 步骤 1：确保目标目录存在（若不存在则创建）
-os.makedirs(historical_dir, exist_ok=True)
-
-# 步骤 2：清除 /content/historical_models 目录下所有 .json 文件
-deleted_count = 0
-for filename in os.listdir(historical_dir):
-    if filename.endswith('.json'):
-        file_path = os.path.join(historical_dir, filename)
-        os.remove(file_path)
-        deleted_count += 1
-
-print(f"已清除 {deleted_count} 个 .json 文件（目录：{historical_dir}）。")
-
-# 步骤 3：从压缩包中解压所有 .json 文件到目标目录
-if os.path.exists(zip_file_path):
-    extracted_count = 0
-    with zipfile.ZipFile(zip_file_path, 'r') as zipf:
-        for member in zipf.namelist():
-            if member.endswith('.json'):
-                # 仅提取 .json 文件，并保持文件名不变
-                zipf.extract(member, historical_dir)
-                extracted_count += 1
-
-    print(f"已成功解压 {extracted_count} 个 .json 文件至 {historical_dir} 目录。")
-    print("操作完成。")
-else:
-    print(f"错误：压缩包文件 {zip_file_path} 不存在，请确认已生成该压缩包。")
-
-
-!mkdir -p /content/monthly_data && cp /content/AIPEQModel/minute/*.parquet /content/monthly_data
-
-!pip install akshare
-!pip install tushare
-
-
-%cd /content
-
 # @title SIRIUS T1 BackTest Simulation (Static Edition)
 import os
 import json
@@ -206,8 +62,15 @@ class MarketData:
 
     @staticmethod
     def get_monthly_file_path(year_month: str) -> str:
-        """【修复点】返回月度 Parquet 文件的标准路径"""
         return os.path.join(SimConfig.MONTHLY_DIR, f"minute_data_{year_month}.parquet")
+
+    @staticmethod
+    def get_limit_prices(pre_close: float) -> tuple:
+        if pre_close <= 0:
+            return None, None
+        limit_up = round(pre_close * (1 + SimConfig.LIMIT_UP_RATIO), 2)
+        limit_down = round(pre_close * (1 + SimConfig.LIMIT_DOWN_RATIO), 2)
+        return limit_up, limit_down
 
     @staticmethod
     def build_date_map(all_model_dates: list) -> dict:
@@ -219,14 +82,16 @@ class MarketData:
             date_map[m_date] = (t1, t2)
         return date_map
 
+    # def _convert_code(code: str) -> str:
+    #     c = str(code).split('.')[0].zfill(6)
+    #     if len(c) > 6 and (c.endswith('.SH') or c.endswith('.SZ')):
+    #         return c
+    #     sh_prefixes = ('60', '68', '51', '56', '58', '55', '900')
+    #     return f"{c}.SH" if any(c.startswith(p) for p in sh_prefixes) else f"{c}.SZ"
+
     @staticmethod
     def _convert_code(code: str) -> str:
-        """统一代码格式：002655 -> 002655.SZ"""
-        c = str(code).split('.')[0].zfill(6)
-        if len(c) > 6 and (c.endswith('.SH') or c.endswith('.SZ')):
-            return c
-        sh_prefixes = ('60', '68', '51', '56', '58', '55', '900')
-        return f"{c}.SH" if any(c.startswith(p) for p in sh_prefixes) else f"{c}.SZ"
+      return code
 
     @staticmethod
     def get_model_dates(start_date: str, end_date: str) -> list:
@@ -247,71 +112,136 @@ class MarketData:
             details = res.get('最优投资组合配置', {}).get('配置详情', [])
             risk_info = res.get('风控因子信息', {})
             pos_factor = float(risk_info.get('综合建议仓位因子', 1.0))
-            targets = [{'code': item.get('代码', ''), 'weight': float(item.get('最优权重(%)', '0').replace('%',''))/100,
-                        'ref_price': float(item.get('最近一日价格', 0))} for item in details if float(item.get('最优权重(%)', '0').replace('%','')) > 0]
+            targets = []
+            for item in details:
+                weight = float(item.get('最优权重(%)', '0').replace('%', '')) / 100
+                if weight <= 0:
+                    continue
+                targets.append({
+                    'code': MarketData._convert_code(item.get('代码', '')),
+                    'name': item.get('名称', ''),
+                    'weight': weight,
+                    'ref_price': float(item.get('最近一日价格', 0))
+                })
             return targets, pos_factor
-        except: return [], 1.0
+        except Exception as e:
+            logger.error(f"解析模型失败: {e}")
+            return [], 1.0
 
+    
     @staticmethod
     def merge_monthly_data(year_month: str):
-        """将缓存的 CSV 合并到月度 Parquet"""
-        pattern = os.path.join(SimConfig.DATA_CACHE_DIR, f"*_{year_month}-*.csv")
-        files = glob.glob(pattern)
-        if not files: return
-        all_data = []
-        for f in files:
+        """
+        将 Cache 中的 CSV 数据合并到月度 Parquet 文件中
+        year_month 格式: "2026-04"
+        """
+        p_path = MarketData.get_monthly_file_path(year_month)
+
+        # 1. 获取 Cache 中属于该月份的所有 CSV 文件
+        cache_files = [
+            f for f in os.listdir(SimConfig.DATA_CACHE_DIR)
+            if f.endswith(".csv") and year_month in f
+        ]
+
+        if not cache_files:
+            return
+
+        # 2. 读取所有新下载的 CSV 数据
+        new_dfs = []
+        for f in cache_files:
             try:
-                df = pd.read_csv(f)
-                parts = os.path.basename(f).replace('.csv', '').split('_')
-                if len(parts) >= 2:
-                    df['ts_code'], df['trade_date'] = parts[0], parts[1]
-                    all_data.append(df)
-            except: pass
-        if all_data:
-            merged = pd.concat(all_data, ignore_index=True)
-            monthly_file = MarketData.get_monthly_file_path(year_month)
-            if os.path.exists(monthly_file):
+                # 【修复核心 1】：强制指定 ts_code 和 trade_date 为字符串格式
+                temp_df = pd.read_csv(
+                    os.path.join(SimConfig.DATA_CACHE_DIR, f), 
+                    dtype={'ts_code': str, 'trade_date': str}
+                )
+                new_dfs.append(temp_df)
+            except Exception as e:
+                logger.error(f"读取缓存CSV失败 {f}: {e}")
+
+        if not new_dfs:
+            return
+
+        combined_df = pd.concat(new_dfs, ignore_index=True)
+
+        # 3. 如果原有 Parquet 存在，先读取它
+        if os.path.exists(p_path):
+            try:
+                old_df = pd.read_parquet(p_path)
+                # 【修复核心 2】：旧数据读出来后，强制转字符串并补齐 6 位，防止原本存的已经是 int
+                if 'ts_code' in old_df.columns:
+                    old_df['ts_code'] = old_df['ts_code'].astype(str).str.zfill(6)
+                
+                # 将旧数据和新数据合并
+                combined_df = pd.concat([old_df, combined_df], ignore_index=True)
+                logger.info(f"正在合并旧数据 ({len(old_df)}条) 与新数据...")
+            except Exception as e:
+                logger.error(f"读取旧 Parquet 失败，可能会导致覆盖: {e}")
+
+        # 4. 去重并保存
+        if not combined_df.empty:
+            # 【修复核心 3】：在合并、排序和保存前，再次做最终的类型兜底
+            combined_df['ts_code'] = combined_df['ts_code'].astype(str).str.zfill(6)
+            combined_df['trade_date'] = combined_df['trade_date'].astype(str)
+            
+            # 以时间、代码、日期作为唯一键去重
+            combined_df.drop_duplicates(subset=['时间', 'ts_code', 'trade_date'], inplace=True)
+            # 排序，保证 Parquet 文件内部有序
+            combined_df.sort_values(['ts_code', '时间'], inplace=True)
+
+            # 5. 写入 Parquet
+            combined_df.to_parquet(p_path, index=False, engine='pyarrow')
+            logger.info(f"✅ 月度数据已更新: {p_path} (新增后总计: {len(combined_df)} 条)")
+
+            # 6. 合并成功后删除对应的 CSV 缓存
+            for f in cache_files:
                 try:
-                    existing_df = pd.read_parquet(monthly_file)
-                    merged = pd.concat([existing_df, merged], ignore_index=True).drop_duplicates(subset=['ts_code', 'trade_date', 'time'], keep='last')
-                except: pass
-            merged.to_parquet(monthly_file, index=False, compression='zstd')
-            logger.info(f"✨ 已成功归档至 {year_month}.parquet")
+                    os.remove(os.path.join(SimConfig.DATA_CACHE_DIR, f))
+                except:
+                    pass
 
     @staticmethod
     def get_minute_data(code: str, date_str: str) -> pd.DataFrame:
-        """【最终兼容版】智能识别 Parquet/CSV 中的列名"""
         ts_code = MarketData._convert_code(code)
         monthly_file = MarketData.get_monthly_file_path(date_str[:7])
+        date_clean = str(date_str).split()[0]
         df = pd.DataFrame()
 
-        # 1. 优先从 Parquet 读取
         if os.path.exists(monthly_file):
             try:
-                df = pd.read_parquet(monthly_file, filters=[('ts_code', '==', ts_code), ('trade_date', '==', date_str)])
-            except: pass
+                df = pd.read_parquet(monthly_file)
+                if 'trade_date' in df.columns:
+                    df['trade_date'] = df['trade_date'].astype(str).str.split().str[0]
+                    df = df[df['trade_date'] == date_clean]
+                if 'ts_code' in df.columns:
+                    df = df[df['ts_code'] == ts_code]
+            except Exception as e:
+                logger.debug(f"Parquet读取失败 {ts_code}@{date_str}: {e}")
+                df = pd.DataFrame()
 
-        # 2. 备选从 CSV 读取
         if df.empty:
-            cache_file = os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{date_str}.csv")
+            cache_file = os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{date_clean}.csv")
             if os.path.exists(cache_file):
-                try: df = pd.read_csv(cache_file)
-                except: pass
+                try:
+                    df = pd.read_csv(cache_file)
+                except Exception as e:
+                    logger.debug(f"CSV读取失败 {ts_code}_{date_clean}: {e}")
 
-        # 3. 智能清洗列名
         if not df.empty:
             try:
-                # 时间列识别
-                if 'trade_time' in df.columns: df['时间'] = pd.to_datetime(df['trade_time'])
+                if 'trade_time' in df.columns:
+                    df['时间'] = pd.to_datetime(df['trade_time'])
                 elif 'date' in df.columns and 'time' in df.columns:
                     df['时间'] = pd.to_datetime(df['date'].astype(str) + " " + df['time'].astype(str))
                 elif 'time' in df.columns:
-                    df['时间'] = pd.to_datetime(date_str + " " + df['time'].astype(str))
-                elif '时间' in df.columns: df['时间'] = pd.to_datetime(df['时间'])
+                    df['时间'] = pd.to_datetime(date_clean + " " + df['time'].astype(str))
+                elif '时间' in df.columns:
+                    df['时间'] = pd.to_datetime(df['时间'])
 
-                # 价格列识别
-                if 'close' in df.columns: df = df.rename(columns={'close': '收盘'})
-                elif 'price' in df.columns: df = df.rename(columns={'price': '收盘'})
+                if 'close' in df.columns:
+                    df = df.rename(columns={'close': '收盘'})
+                elif 'price' in df.columns:
+                    df = df.rename(columns={'price': '收盘'})
 
                 if '时间' in df.columns and '收盘' in df.columns:
                     return df[['时间', '收盘']].sort_values("时间").drop_duplicates('时间')
@@ -331,23 +261,46 @@ class MarketData:
                 data = resp.json()
                 if not data: continue
                 if isinstance(data, dict): data = data.get("data") or data.get("trends")
+
                 df = pd.DataFrame(data)
+                if df.empty: return pd.DataFrame()
+
                 df["时间"] = pd.to_datetime(df["date"] + " " + df["time"])
-                df["收盘"] = df["price"]
-                return df[["时间", "收盘"]].sort_values("时间")
-            except:
+
+                # 兼容 API 可能返回的字段名 (price 或 close)
+                df["收盘"] = df.get("price", df.get("close", 0.0))
+
+                # 获取其他字段，如果 API 没有提供，则使用收盘价/0 兜底，保证 Schema 完整
+                df["开盘"] = df.get("open", df["收盘"])
+                df["最高"] = df.get("high", df["收盘"])
+                df["最低"] = df.get("low", df["收盘"])
+                # 成交量可能是 volume 或 vol
+                df["成交量"] = df.get("volume", df.get("vol", 0.0))
+
+                # 返回完整的6个基础字段
+                return df[["时间", "开盘", "收盘", "最高", "最低", "成交量"]].sort_values("时间")
+            except Exception as e:
+                logger.error(f"请求异常: {e}")
                 time_module.sleep(SimConfig.EXPONENTIAL_BACKOFF_BASE ** attempt)
         return pd.DataFrame()
 
+
+    import shutil # 需要导入 shutil
     @staticmethod
     def preload_from_models(start_date: str, end_date: str):
-        logger.info("🚀 启动智能预下载器 (SIRIUS 适配版)")
+        logger.info("预下载器启动")
+
+        # 【新增】：每次运行前清空 Cache 目录，确保不读取旧的、残缺的中间文件
+        if os.path.exists(SimConfig.DATA_CACHE_DIR):
+            logger.info(f"正在清理缓存目录: {SimConfig.DATA_CACHE_DIR}")
+            shutil.rmtree(SimConfig.DATA_CACHE_DIR)
+        os.makedirs(SimConfig.DATA_CACHE_DIR, exist_ok=True)
+
         dates = MarketData.get_model_dates(start_date, end_date)
         if not dates: return
         date_map = MarketData.build_date_map(dates)
         today_str = MarketData._get_current_cn_date()
 
-        # 1. 收集目标
         raw_pairs = set()
         for m_date in dates:
             t1, t2 = date_map[m_date]
@@ -355,35 +308,62 @@ class MarketData:
             with open(model_file, 'r', encoding='utf-8') as f:
                 targets, _ = MarketData.parse_sirius_model(json.load(f))
                 for t in targets:
-                    if t1 < today_str: raw_pairs.add((MarketData._convert_code(t['code']), t1))
-                    if t2 < today_str: raw_pairs.add((MarketData._convert_code(t['code']), t2))
+                    # 统一格式化 code，确保匹配时字符串完全一致
+                    code = MarketData._convert_code(t['code'])
+                    if t1 <= today_str: raw_pairs.add((code, t1))
+                    if t2 <= today_str: raw_pairs.add((code, t2))
 
-        # 2. 扫描索引
+        # 构建已存在数据的集合
         parquet_keys_set = set()
-        for ym in set(d[:7] for _, d in raw_pairs):
+        # 修正：更鲁棒的月份提取方式 (处理 2023-10-27 或 20231027)
+        unique_months = set()
+        for _, d in raw_pairs:
+            clean_d = d.replace('-', '') # 转为 20231027
+            unique_months.add(f"{clean_d[:4]}-{clean_d[4:6]}") # 统一转为 2023-10
+
+        for ym in unique_months:
             p_path = MarketData.get_monthly_file_path(ym)
             if os.path.exists(p_path):
                 try:
                     df_p = pd.read_parquet(p_path, columns=['ts_code', 'trade_date'])
-                    parquet_keys_set.update(set(zip(df_p['ts_code'].astype(str), df_p['trade_date'].astype(str))))
-                except: pass
+                    # 【关键修复】：确保 trade_date 转为与 raw_pairs 一致的字符串格式
+                    # 假设 raw_pairs 里的日期是 '2023-10-27'
+                    df_p['trade_date'] = pd.to_datetime(df_p['trade_date']).dt.strftime('%Y-%m-%d')
+                    df_p['ts_code'] = df_p['ts_code'].astype(str)
 
-        # 3. 下载缺失
+                    parquet_keys_set.update(set(zip(df_p['ts_code'], df_p['trade_date'])))
+                    logger.info(f"已加载 {ym} 历史数据，共 {len(df_p)} 条记录")
+                except Exception as e:
+                    logger.error(f"读取 Parquet 异常 {p_path}: {e}")
+
         last_month = None
         for ts_code, t_date in raw_pairs:
-            if (ts_code, t_date) in parquet_keys_set: continue
-            if os.path.exists(os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv")): continue
+            # 如果 Parquet 里已经有了，就不再下载
+            if (ts_code, t_date) in parquet_keys_set:
+                continue
 
-            if last_month and t_date[:7] != last_month: MarketData.merge_monthly_data(last_month)
+            # 这里的 os.path.exists(csv) 在清空 Cache 后必然为 False，起到二次保险作用
+            csv_path = os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv")
+            if os.path.exists(csv_path): continue
+
+            if last_month and t_date[:7] != last_month:
+                MarketData.merge_monthly_data(last_month)
             last_month = t_date[:7]
 
+            # 执行下载
             df = MarketData._fetch_intraday_from_api(ts_code.split('.')[0], t_date)
             if not df.empty:
-                df.to_csv(os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv"), index=False)
-                logger.info(f"✓ 下载成功: {ts_code} ({t_date})")
+                df["ts_code"] = ts_code
+                df["trade_date"] = t_date
+                standard_columns = ['时间', '开盘', '收盘', '最高', '最低', '成交量', 'ts_code', 'trade_date']
+                df = df[standard_columns]
+                df.to_csv(csv_path, index=False)
+                logger.info(f"下载成功: {ts_code} ({t_date})")
+
             time_module.sleep(SimConfig.API_REQUEST_INTERVAL)
 
-        if last_month: MarketData.merge_monthly_data(last_month)
+        if last_month:
+            MarketData.merge_monthly_data(last_month)
 
 # ========================= 4. 账户 & 执行器 (SIRIUS 核心) =========================
 class MockAccount:
@@ -442,7 +422,7 @@ class SiriusStrictExecutor:
         self.account.start_day()
 
         # --- 1. 早盘调仓阶段 (模拟 10:00) ---
-        trade_time_morning = time(10, 0)
+        trade_time_morning = time(9, 45)
 
         # 获取 10:00 的快照价格作为“当前价”
         prices_1000 = {}
@@ -519,18 +499,58 @@ class SiriusStrictExecutor:
 
 # ========================= 回测主函数 =========================
 def run_strict_backtest():
-    # 数据预载 (保持不变)
+    # 数据预载
     if SimConfig.ENABLE_PRELOAD:
         MarketData.preload_from_models(SimConfig.START_DATE, SimConfig.END_DATE)
+        # 【新增】参照代码2，增加预加载完即退出的逻辑
+        if getattr(SimConfig, 'ONLY_PRELOAD', False): 
+            logger.info("预加载完成，退出")
+            return
 
     account = MockAccount(SimConfig.INITIAL_CASH)
     executor = SiriusStrictExecutor(account)
-    dates = MarketData.get_model_dates(SimConfig.START_DATE, SimConfig.END_DATE)
+    model_dates = MarketData.get_model_dates(SimConfig.START_DATE, SimConfig.END_DATE)
+    if not model_dates:
+        logger.error("未找到模型文件")
+        return
+    logger.info(f"模型日期: {model_dates}")
 
-    for d_str in dates:
-        logger.info(f"========== {d_str} ==========")
+    tz_cn = timezone(timedelta(hours=8))
+    today_cn = datetime.now(tz_cn).strftime('%Y-%m-%d')
+
+    # 构建交易日映射 (交易日期 -> 模型日期)
+    trade_map = {}
+    for i, m_date in enumerate(model_dates):
+        if i < len(model_dates) - 1:
+            trade_date = model_dates[i + 1]
+        else:
+            if today_cn not in model_dates and today_cn > m_date:
+                trade_date = today_cn
+            else:
+                model_dt = datetime.strptime(m_date, "%Y-%m-%d")
+                trade_date = (model_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+        trade_map[trade_date] = m_date
+
+    logger.info(f"交易日映射: {trade_map}")
+
+
+    total_asset = SimConfig.INITIAL_CASH  # 初始化，防止model_dates为空时报错
+
+    for trade_date in sorted(trade_map.keys()):
+        if not (SimConfig.START_DATE <= trade_date <= SimConfig.END_DATE) and trade_date != today_cn:
+          continue
+        model_date = trade_map[trade_date]
+        # 【修改】参照代码2，优化分隔符打印样式
+        logger.info(f"========== 模型[{model_date}] -> 交易[{trade_date}] ==========")
+        
         # 1. 加载模型
-        model_file = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_{d_str}.json")
+        model_file = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_{model_date}.json")
+        
+        # 【新增】参照代码2，增加文件不存在的校验和错误日志
+        if not os.path.exists(model_file):
+            logger.error(f"模型文件不存在: {model_file}")
+            continue
+            
         with open(model_file, 'r', encoding='utf-8') as f:
             targets, pf = MarketData.parse_sirius_model(json.load(f))
 
@@ -538,20 +558,51 @@ def run_strict_backtest():
         pre_closes = {t['code']: t['ref_price'] for t in targets}
 
         # 3. 运行严格仿真
-        executor.simulate_day(d_str, targets, pf, pre_closes)
+        executor.simulate_day(trade_date, targets, pf, pre_closes)
 
         # 4. 结算 (取当日收盘价计算净值)
         v = 0
         for c, p in account.positions.items():
-            df = MarketData.get_minute_data(c, d_str)
+            df = MarketData.get_minute_data(c, trade_date)
             last_p = df.iloc[-1]['收盘'] if not df.empty else p['avg_price']
             v += p['volume'] * last_p
-        logger.info(f"Day End Asset: {account.cash + v:.2f}")
+            
+        total_asset = account.cash + v
+        # 【修改】参照代码2，统一每日资产结算的打印样式
+        logger.info(f"交易日结束资产: {total_asset:.2f}")
 
-    logger.info("回测完成！")
+    logger.info("严格回测完成！")
+
+    # ==========================================
+    # 【新增】参照代码2，增加期末回测统计报表输出
+    # ==========================================
+    ret = (total_asset / SimConfig.INITIAL_CASH - 1) * 100
+    
+    # 尝试兼容获取交易记录以统计买卖次数
+    # (假设 executor 或 account 中有 all_trades 属性，若没有则跳过次数统计)
+    trades = getattr(executor, 'all_trades', []) 
+    
+    stats_msg = (
+        f"\n{'='*50}\n"
+        f"严格回测统计:\n"
+        f"  初始资金: {SimConfig.INITIAL_CASH:.2f}\n"
+        f"  最终资产: {total_asset:.2f}\n"
+        f"  收益率: {ret:.2f}%\n"
+    )
+    
+    if trades:
+        df = pd.DataFrame(trades)
+        buy_cnt = len(df[df['side'] == 'buy']) if not df.empty else 0
+        sell_cnt = len(df[df['side'] == 'sell']) if not df.empty else 0
+        stats_msg += f"  买入次数: {buy_cnt}\n  卖出次数: {sell_cnt}\n"
+        
+    stats_msg += f"{'='*50}"
+    logger.info(stats_msg)
+
 
 if __name__ == "__main__":
     run_strict_backtest()
+
 
 
 # @title SIRIUS T1 BackTest Simulation (Dynamic Edition)
@@ -674,13 +725,16 @@ class MarketData:
             date_map[m_date] = (t1, t2)
         return date_map
 
+    # def _convert_code(code: str) -> str:
+    #     c = str(code).split('.')[0].zfill(6)
+    #     if len(c) > 6 and (c.endswith('.SH') or c.endswith('.SZ')):
+    #         return c
+    #     sh_prefixes = ('60', '68', '51', '56', '58', '55', '900')
+    #     return f"{c}.SH" if any(c.startswith(p) for p in sh_prefixes) else f"{c}.SZ"
+
     @staticmethod
     def _convert_code(code: str) -> str:
-        c = str(code).split('.')[0].zfill(6)
-        if len(c) > 6 and (c.endswith('.SH') or c.endswith('.SZ')):
-            return c
-        sh_prefixes = ('60', '68', '51', '56', '58', '55', '900')
-        return f"{c}.SH" if any(c.startswith(p) for p in sh_prefixes) else f"{c}.SZ"
+      return code
 
     @staticmethod
     def get_model_dates(start_date: str, end_date: str) -> list:
@@ -717,6 +771,7 @@ class MarketData:
             logger.error(f"解析模型失败: {e}")
             return [], 1.0
 
+    
     @staticmethod
     def merge_monthly_data(year_month: str):
         """
@@ -724,13 +779,13 @@ class MarketData:
         year_month 格式: "2026-04"
         """
         p_path = MarketData.get_monthly_file_path(year_month)
-        
+
         # 1. 获取 Cache 中属于该月份的所有 CSV 文件
         cache_files = [
-            f for f in os.listdir(SimConfig.DATA_CACHE_DIR) 
+            f for f in os.listdir(SimConfig.DATA_CACHE_DIR)
             if f.endswith(".csv") and year_month in f
         ]
-        
+
         if not cache_files:
             return
 
@@ -738,38 +793,50 @@ class MarketData:
         new_dfs = []
         for f in cache_files:
             try:
-                new_dfs.append(pd.read_csv(os.path.join(SimConfig.DATA_CACHE_DIR, f)))
+                # 【修复核心 1】：强制指定 ts_code 和 trade_date 为字符串格式
+                temp_df = pd.read_csv(
+                    os.path.join(SimConfig.DATA_CACHE_DIR, f), 
+                    dtype={'ts_code': str, 'trade_date': str}
+                )
+                new_dfs.append(temp_df)
             except Exception as e:
                 logger.error(f"读取缓存CSV失败 {f}: {e}")
 
         if not new_dfs:
             return
-        
+
         combined_df = pd.concat(new_dfs, ignore_index=True)
 
-        # 3. 【关键步骤】：如果原有 Parquet 存在，先读取它
+        # 3. 如果原有 Parquet 存在，先读取它
         if os.path.exists(p_path):
             try:
                 old_df = pd.read_parquet(p_path)
+                # 【修复核心 2】：旧数据读出来后，强制转字符串并补齐 6 位，防止原本存的已经是 int
+                if 'ts_code' in old_df.columns:
+                    old_df['ts_code'] = old_df['ts_code'].astype(str).str.zfill(6)
+                
                 # 将旧数据和新数据合并
                 combined_df = pd.concat([old_df, combined_df], ignore_index=True)
                 logger.info(f"正在合并旧数据 ({len(old_df)}条) 与新数据...")
             except Exception as e:
                 logger.error(f"读取旧 Parquet 失败，可能会导致覆盖: {e}")
 
-        # 4. 去重（防止重复运行导致数据翻倍）
-        # 以时间、代码、日期作为唯一键去重
+        # 4. 去重并保存
         if not combined_df.empty:
-            initial_count = len(combined_df)
+            # 【修复核心 3】：在合并、排序和保存前，再次做最终的类型兜底
+            combined_df['ts_code'] = combined_df['ts_code'].astype(str).str.zfill(6)
+            combined_df['trade_date'] = combined_df['trade_date'].astype(str)
+            
+            # 以时间、代码、日期作为唯一键去重
             combined_df.drop_duplicates(subset=['时间', 'ts_code', 'trade_date'], inplace=True)
             # 排序，保证 Parquet 文件内部有序
             combined_df.sort_values(['ts_code', '时间'], inplace=True)
-            
+
             # 5. 写入 Parquet
             combined_df.to_parquet(p_path, index=False, engine='pyarrow')
             logger.info(f"✅ 月度数据已更新: {p_path} (新增后总计: {len(combined_df)} 条)")
 
-            # 6. 【可选】合并成功后删除对应的 CSV 缓存，防止下次重复合并
+            # 6. 合并成功后删除对应的 CSV 缓存
             for f in cache_files:
                 try:
                     os.remove(os.path.join(SimConfig.DATA_CACHE_DIR, f))
@@ -860,12 +927,12 @@ class MarketData:
                 time_module.sleep(SimConfig.EXPONENTIAL_BACKOFF_BASE ** attempt)
         return pd.DataFrame()
 
-    
+
     import shutil # 需要导入 shutil
     @staticmethod
     def preload_from_models(start_date: str, end_date: str):
         logger.info("预下载器启动")
-        
+
         # 【新增】：每次运行前清空 Cache 目录，确保不读取旧的、残缺的中间文件
         if os.path.exists(SimConfig.DATA_CACHE_DIR):
             logger.info(f"正在清理缓存目录: {SimConfig.DATA_CACHE_DIR}")
@@ -906,7 +973,7 @@ class MarketData:
                     # 假设 raw_pairs 里的日期是 '2023-10-27'
                     df_p['trade_date'] = pd.to_datetime(df_p['trade_date']).dt.strftime('%Y-%m-%d')
                     df_p['ts_code'] = df_p['ts_code'].astype(str)
-                    
+
                     parquet_keys_set.update(set(zip(df_p['ts_code'], df_p['trade_date'])))
                     logger.info(f"已加载 {ym} 历史数据，共 {len(df_p)} 条记录")
                 except Exception as e:
@@ -917,12 +984,12 @@ class MarketData:
             # 如果 Parquet 里已经有了，就不再下载
             if (ts_code, t_date) in parquet_keys_set:
                 continue
-            
+
             # 这里的 os.path.exists(csv) 在清空 Cache 后必然为 False，起到二次保险作用
             csv_path = os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv")
             if os.path.exists(csv_path): continue
 
-            if last_month and t_date[:7] != last_month: 
+            if last_month and t_date[:7] != last_month:
                 MarketData.merge_monthly_data(last_month)
             last_month = t_date[:7]
 
@@ -938,15 +1005,15 @@ class MarketData:
 
             time_module.sleep(SimConfig.API_REQUEST_INTERVAL)
 
-        if last_month: 
+        if last_month:
             MarketData.merge_monthly_data(last_month)
 
 # ========================= 4. 模拟账户 (修正名称存储) =========================
 class MockAccount:
     def __init__(self, initial_cash):
         self.cash = initial_cash
-        self.positions = {}        
-        self.today_buys = set()    
+        self.positions = {}
+        self.today_buys = set()
 
     def start_day(self):
         self.today_buys.clear()
@@ -957,7 +1024,7 @@ class MockAccount:
         vol = (vol // 100) * 100
         if vol <= 0: return False
         cost = vol * price
-        
+
         # 确保名称始终有效
         actual_name = name if name else code
         display_name = f"{code}({actual_name})"
@@ -968,7 +1035,7 @@ class MockAccount:
                 p = self.positions[code]
             else:
                 p = {'volume': 0, 'avg_price': 0.0, 'can_sell': 0, 'name': actual_name}
-            
+
             total_cost = p['volume'] * p['avg_price'] + cost
             p['volume'] += vol
             p['avg_price'] = total_cost / p['volume']
@@ -984,7 +1051,7 @@ class MockAccount:
             p = self.positions[code]
             available = p.get('can_sell', 0)
             if available < vol: return False
-            
+
             self.cash += vol * price
             p['volume'] -= vol
             p['can_sell'] -= vol
@@ -1000,10 +1067,10 @@ class MockAccount:
 class SiriusSimulator:
     def __init__(self, account):
         self.account = account
-        self.today_trades = []      
-        self.all_trades = []        
-        self.daily_snapshots = []   
-        self.last_dynamic_trade_time = {}   
+        self.today_trades = []
+        self.all_trades = []
+        self.daily_snapshots = []
+        self.last_dynamic_trade_time = {}
 
     # 修正：增加一个全局代码-名称映射表，防止名称丢失
     def _get_names_map(self, targets):
@@ -1017,20 +1084,20 @@ class SiriusSimulator:
     def save_daily_snapshot(self, date_str):
         total_value = self.account.cash
         day_snaps = [] # 临时存放当日记录
-        
+
         for code, pos in self.account.positions.items():
             df = MarketData.get_minute_data(code, date_str)
             last_price = df.iloc[-1]['收盘'] if not df.empty else pos['avg_price']
             market_value = pos['volume'] * last_price
             total_value += market_value
-            
+
             day_snaps.append({
                 'date': date_str, 'code': code, 'name': pos.get('name', code),
                 'volume': pos['volume'], 'can_sell': pos.get('can_sell', 0),
                 'avg_price': pos['avg_price'], 'last_price': last_price,
                 'market_value': market_value, 'weight': 0.0
             })
-            
+
         # 计算权重
         for snap in day_snaps:
             snap['weight'] = snap['market_value'] / total_value if total_value > 0 else 0
@@ -1067,7 +1134,7 @@ class SiriusSimulator:
 
         # 2. 计算基准资产和目标股数
         dt_start = datetime.combine(datetime.strptime(date_str, "%Y-%m-%d").date(), time(9, 31))
-        
+
         # 初始定价逻辑
         initial_prices = {}
         for code, df in daily_data.items():
@@ -1102,7 +1169,7 @@ class SiriusSimulator:
                 df = daily_data.get(code)
                 price = df.loc[current_dt, '收盘'] if (df is not None and current_dt in df.index) else initial_prices.get(code, 0)
                 current_total_asset += pos['volume'] * price
-            
+
             target_vols = compute_target_volumes(current_total_asset)
 
             # ---- 尾盘强制卖出 ----
@@ -1129,7 +1196,7 @@ class SiriusSimulator:
                 for code, target_vol in target_vols.items():
                     df = daily_data.get(code)
                     if df is None or current_dt not in df.index: continue
-                    
+
                     real_price = df.loc[current_dt, '收盘']
                     # 获取模型参考价（昨收）
                     ref_price = target_info[code]['ref_price']
@@ -1152,7 +1219,7 @@ class SiriusSimulator:
                         if real_price <= ref_price * (1 + SimConfig.PRICE_TOLERANCE):
                             buy_vol = (target_vol - pos['volume']) // 100 * 100
                             if buy_vol >= 100:
-                                if self.account.order(date_str, current_time, code, 'buy', buy_vol, real_price, 
+                                if self.account.order(date_str, current_time, code, 'buy', buy_vol, real_price,
                                                       f"动态低吸(偏离{deviation:.1f}%)", stk_name):
                                     self.today_trades.append({
                                         'date': date_str, 'time': current_time.strftime('%H:%M'),
@@ -1179,7 +1246,7 @@ class SiriusSimulator:
                                         'volume': sell_vol, 'price': real_price, 'reason': f"动态卖出(偏离{deviation:.1f}%)"
                                     })
                                     self.last_dynamic_trade_time[code] = now_ts
-        
+
         self.all_trades.extend(self.today_trades)
 
     def export_to_excel(self):
@@ -1268,144 +1335,3 @@ def run_backtest():
 
 if __name__ == "__main__":
     run_backtest()
-
-
-# @title Commit Parquet File to Github AIPEQModel
-import os
-import datetime
-import shutil # 引入文件操作库
-import re
-
-%cd /content
-
-# --- 1. 配置 GitHub 信息 ---
-GIT_USERNAME = "digital-era"
-GIT_EMAIL = "digital_era@sina.com"
-GIT_REPO_NAME = "AIPEQModel"
-GIT_TARGET_BRANCH = "main"
-# 文件在仓库中的目标路径。根目录留空 ""
-TARGET_REPO_PATH = "minute"
-
-# !!! 安全警告 !!!
-# 直接将 PAT 写入代码非常不安全。强烈建议使用 Colab Secrets 来存储它。
-# 1. 点击左侧边栏的 🔑 图标。
-# 2. 添加一个新的 Secret，名称为 `GITHUB_PAT`。
-# 3. 将您的 PAT 粘贴到值中。
-# 4. 勾选 "Notebook access"。
-# 5. 然后使用下一行代码来安全地获取它。
-# from google.colab import userdata
-# GIT_PAT = userdata.get('GITHUB_PAT')
-GIT_PAT = "" # 暂时使用硬编码，但请尽快切换到 Secrets
-
-# --- 2. 动态查找源parquet文件 ---
-search_directory = '/content/monthly_data'
-repo_directory = f'/content/{GIT_REPO_NAME}' # 定义仓库路径
-file_prefixes = ['minute_data_2026-04.parquet']
-source_files_to_commit = []
-
-print(f"--- 步骤1: 在 '{search_directory}' 查找模型parquet文件 ---")
-all_files_in_content = os.listdir(search_directory)
-for filename in all_files_in_content:
-    if filename.endswith('.parquet'):
-        for prefix in file_prefixes:
-            if filename.startswith(prefix):
-                source_files_to_commit.append(os.path.join(search_directory, filename))
-                break
-
-# --- 3. 移动文件并执行 Git 操作 ---
-if not source_files_to_commit:
-    print("\n⚠️ 未找到任何需要提交的parquet文件。脚本执行结束。")
-elif not os.path.isdir(repo_directory):
-    print(f"\n❌ 错误：Git仓库目录 '{repo_directory}' 不存在。请确保您已成功克隆了仓库。")
-else:
-    print("\n✅ 找到以下源文件:")
-    for file_path in source_files_to_commit:
-        print(f"- {os.path.basename(file_path)}")
-
-    # --- 关键修复 1: 将文件拷贝到仓库目录内 ---
-    print(f"\n--- 步骤2: 将文件拷贝到仓库 '{repo_directory}' ---")
-    files_to_add_in_repo = []
-    for src_path in source_files_to_commit:
-        file_name = os.path.basename(src_path)
-        # 目标路径可以是仓库的根目录，或指定的子目录
-        dest_path = os.path.join(repo_directory, TARGET_REPO_PATH, file_name)
-
-        # 确保目标子目录存在 (如果TARGET_REPO_PATH不为空)
-        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-
-        shutil.copy(src_path, dest_path)
-        print(f"已拷贝 '{file_name}' -> '{dest_path}'")
-        # 记录在仓库中的相对路径，用于 git add
-        files_to_add_in_repo.append(os.path.join(TARGET_REPO_PATH, file_name))
-
-    # --- 关键修复 2: 进入仓库目录执行Git命令，并使用PAT ---
-    print("\n--- 步骤3: 执行Git操作 ---")
-
-    # 保存当前工作目录
-    original_directory = os.getcwd()
-    try:
-        # 进入 Git 仓库目录，这是执行git命令的最佳实践
-        os.chdir(repo_directory)
-
-        !git config user.name "$GIT_USERNAME"
-        !git config user.email "$GIT_EMAIL"
-        print("Git 用户名和邮箱已配置。")
-
-        print(f"正在切换到分支: {GIT_TARGET_BRANCH}...")
-        !git checkout $GIT_TARGET_BRANCH
-
-        # 为文件名加上引号，以处理可能存在的空格等特殊字符
-        quoted_file_paths = [f'"{path}"' for path in files_to_add_in_repo]
-        files_to_add_str = " ".join(quoted_file_paths)
-
-        print("正在添加指定文件到 Git 暂存区...")
-        !git add {files_to_add_str}
-
-        commit_message = f"Update parquet from Colab: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        print(f"正在提交更改: '{commit_message}'...")
-        # 使用 git status 检查暂存区状态，如果无更改则不提交
-        # `git diff --staged --quiet` 如果有暂存更改，则退出码为1，否则为0
-        if (os.system('git diff --staged --quiet') != 0) or True:
-            !git commit -m "{commit_message}"
-
-            # 构建带PAT的远程URL
-            remote_url = f"https://{GIT_PAT}@github.com/{GIT_USERNAME}/{GIT_REPO_NAME}.git"
-
-            print(f"正在推送到远程仓库的 '{GIT_TARGET_BRANCH}' 分支...")
-            # 使用构建好的URL进行推送
-            !git push "{remote_url}" {GIT_TARGET_BRANCH}
-
-            print("\n🎉 所有指定的parquet文件已成功推送到 GitHub。")
-        else:
-            print("没有检测到文件更改，无需提交。")
-
-    finally:
-        # 无论成功与否，都切换回原始目录，避免影响后续的cell
-        os.chdir(original_directory)
-        print(f"\n已返回原始工作目录: {original_directory}")
-
-
-# @title Convert Parquet File to Excel
-import pandas as pd
-import glob
-import os
-
-%cd /content
-
-PARQUET_DIR = "./monthly_data"
-EXCEL_DIR = "./excel_output"
-
-os.makedirs(EXCEL_DIR, exist_ok=True)
-
-files = glob.glob(os.path.join(PARQUET_DIR, "*.parquet"))
-if not files:
-    print("❌ 没有找到 parquet 文件")
-else:
-    for f in files:
-        name = os.path.basename(f).replace(".parquet", ".xlsx")
-        out_path = os.path.join(EXCEL_DIR, name)
-        df = pd.read_parquet(f)
-        df.to_excel(out_path, index=False)
-        print(f"✅ {os.path.basename(f)} → {name} ({len(df)} 行)")
-    print(f"\n共转换 {len(files)} 个文件，输出目录: {EXCEL_DIR}/")
-
