@@ -49,10 +49,13 @@ class Config:
     TRADE_RECORD_PATH = os.path.join(LOG_DIR, "trade_records.xlsx")
     POSITION_SNAPSHOT_PATH = os.path.join(LOG_DIR, "position_snapshots.xlsx")
 
+    MORNING_TRADE_TIME = time(9, 45)   # 上午调仓时间点
+
     MARKET_OPEN = datetime.strptime("09:25", "%H:%M").time()
     MARKET_CLOSE = datetime.strptime("15:05", "%H:%M").time()  # 可调整为 15:05 更安全
     FORCE_SELL_HOUR = 14
     FORCE_SELL_MINUTE = 50
+    
 
     ORDER_TIMEOUT = 10
     MAX_ORDER_VOLUME = 1000000
@@ -877,7 +880,7 @@ class SIRIUSBot:
                 break
 
             # 正常扫描
-            if not isoncepass and current_time >= time(9, 45):
+            if not isoncepass and current_time >= Config.MORNING_TRADE_TIME:
               self.intraday_trade_once_static()
               isoncepass = True
 
@@ -944,7 +947,7 @@ if __name__ == "__main__":
                 if (Config.MARKET_OPEN <= current_time <= Config.MARKET_CLOSE) and not (now.hour > Config.FORCE_SELL_HOUR or
                                               (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE)):
                     
-                    if (last_trade_date != today_str) and (current_time >= time(9, 45)):
+                    if (last_trade_date != today_str) and (current_time >= Config.MORNING_TRADE_TIME:
                         logger.info(f"进入交易时间，开始今日调仓: {today_str}")
                         bot.intraday_trade_once_static()
                         last_trade_date = today_str
