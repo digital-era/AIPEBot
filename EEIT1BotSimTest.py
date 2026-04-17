@@ -1,3 +1,579 @@
+# @title SIRIUS T1 BackTest Simulation (Static Edition)
+import os
+import json
+import logging
+import pandas as pd
+from datetime import datetime, time, timedelta, timezone
+import time as time_module
+import glob
+import requests
+import random
+
+# ========================= 1. 配置 (对齐 SIRIUS & 基础设施) =========================
+class SimConfig:
+    START_DATE = "2026-04-07"
+    END_DATE = "2026-04-17"
+    INITIAL_CASH = 100000.0
+
+    # SIRIUS 策略逻辑
+    TRADE_RATIO = 0.5
+    BUY_REBOUND_RATIO = 0.0062
+    SELL_DROP_RATIO = 0.0038
+    FORCE_DEADLINE_TIME = time(14, 50)
+    FORCE_SELL_PRICE_RATIO = 0.995
+
+    # 路径配置 (严格遵循参考样例)
+    MODEL_HISTORY_DIR = "./historical_models"
+    DATA_CACHE_DIR = "./min_data_cache"
+    MONTHLY_DIR = "./monthly_data"
+    MODEL_NAME_PREFIX = "流入模型"
+
+    API_BASE_URL = "https://query.aivibeinvestment.com/api/query"
+    API_REQUEST_INTERVAL = 0.3
+    MAX_RETRIES = 5
+    EXPONENTIAL_BACKOFF_BASE = 2
+    FILL_OHLC_WITH_PRICE = True
+    ENABLE_PRELOAD = True
+
+    # 【新增】输出路径配置
+    OUTPUT_DIR = "./backtest_results"
+    TRADE_RECORD_FILE = os.path.join(OUTPUT_DIR, "trade_records_static.xlsx")
+    DAILY_SNAPSHOT_FILE = os.path.join(OUTPUT_DIR, "daily_snapshots.xlsx")
+
+# 创建目录
+for d in [SimConfig.MODEL_HISTORY_DIR, SimConfig.DATA_CACHE_DIR, SimConfig.MONTHLY_DIR, SimConfig.OUTPUT_DIR]:
+    os.makedirs(d, exist_ok=True)
+
+# ========================= 2. 日志 (强力清理，杜绝重复打印) =========================
+logger = logging.getLogger("SIRIUS_Simulator")
+if logger.handlers:
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+
+logger.setLevel(logging.DEBUG)
+logger.propagate = False # 防止传递给 root logger 导致双重打印
+
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+ch = logging.StreamHandler()
+ch.setFormatter(formatter)
+logger.addHandler(ch)
+
+# ========================= 3. 数据模块 (严格复刻 Parquet Master 逻辑) =========================
+class MarketData:
+    @staticmethod
+    def _get_current_cn_date() -> str:
+        tz_cn = timezone(timedelta(hours=8))
+        return datetime.now(tz_cn).strftime('%Y-%m-%d')
+
+    @staticmethod
+    def get_monthly_file_path(year_month: str) -> str:
+        return os.path.join(SimConfig.MONTHLY_DIR, f"minute_data_{year_month}.parquet")
+
+    @staticmethod
+    def build_date_map(all_model_dates: list) -> dict:
+        current_date = MarketData._get_current_cn_date()
+        date_map = {}
+        for idx, m_date in enumerate(all_model_dates):
+            t1 = all_model_dates[idx + 1] if idx + 1 < len(all_model_dates) else current_date
+            t2 = all_model_dates[idx + 2] if idx + 2 < len(all_model_dates) else current_date
+            date_map[m_date] = (t1, t2)
+        return date_map
+
+    @staticmethod
+    def _convert_code(code: str) -> str:
+      return code
+
+    @staticmethod
+    def get_model_dates(start_date: str, end_date: str) -> list:
+        pattern = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_*.json")
+        dates = []
+        for f in glob.glob(pattern):
+            basename = os.path.basename(f)
+            date_str = basename.replace(f"{SimConfig.MODEL_NAME_PREFIX}_", "").replace(".json", "")
+            if start_date <= date_str <= end_date:
+                dates.append(date_str)
+        dates.sort()
+        return dates
+
+    @staticmethod
+    def parse_sirius_model(model_data: dict) -> tuple:
+        try:
+            res = model_data.get('结果', {})
+            details = res.get('最优投资组合配置', {}).get('配置详情', [])
+            risk_info = res.get('风控因子信息', {})
+            pos_factor = float(risk_info.get('综合建议仓位因子', 1.0))
+            targets = []
+            for item in details:
+                weight = float(item.get('最优权重(%)', '0').replace('%', '')) / 100
+                if weight <= 0:
+                    continue
+                targets.append({
+                    'code': MarketData._convert_code(item.get('代码', '')),
+                    'name': item.get('名称', ''),
+                    'weight': weight,
+                    'ref_price': float(item.get('最近一日价格', 0))
+                })
+            return targets, pos_factor
+        except Exception as e:
+            logger.error(f"解析模型失败: {e}")
+            return [], 1.0
+
+    @staticmethod
+    def merge_monthly_data(year_month: str):
+        p_path = MarketData.get_monthly_file_path(year_month)
+        cache_files = [
+            f for f in os.listdir(SimConfig.DATA_CACHE_DIR)
+            if f.endswith(".csv") and year_month in f
+        ]
+
+        if not cache_files:
+            return
+
+        new_dfs = []
+        for f in cache_files:
+            try:
+                temp_df = pd.read_csv(
+                    os.path.join(SimConfig.DATA_CACHE_DIR, f),
+                    dtype={'ts_code': str, 'trade_date': str}
+                )
+                new_dfs.append(temp_df)
+            except Exception as e:
+                logger.error(f"读取缓存CSV失败 {f}: {e}")
+
+        if not new_dfs:
+            return
+
+        combined_df = pd.concat(new_dfs, ignore_index=True)
+
+        if os.path.exists(p_path):
+            try:
+                old_df = pd.read_parquet(p_path)
+                if 'ts_code' in old_df.columns:
+                    old_df['ts_code'] = old_df['ts_code'].astype(str).str.zfill(6)
+                combined_df = pd.concat([old_df, combined_df], ignore_index=True)
+            except Exception as e:
+                logger.error(f"读取旧 Parquet 失败: {e}")
+
+        if not combined_df.empty:
+            combined_df['ts_code'] = combined_df['ts_code'].astype(str).str.zfill(6)
+            combined_df['trade_date'] = combined_df['trade_date'].astype(str)
+            combined_df.drop_duplicates(subset=['时间', 'ts_code', 'trade_date'], inplace=True)
+            combined_df.sort_values(['ts_code', '时间'], inplace=True)
+            combined_df.to_parquet(p_path, index=False, engine='pyarrow')
+            
+            for f in cache_files:
+                try:
+                    os.remove(os.path.join(SimConfig.DATA_CACHE_DIR, f))
+                except:
+                    pass
+
+    @staticmethod
+    def get_minute_data(code: str, date_str: str) -> pd.DataFrame:
+        ts_code = MarketData._convert_code(code)
+        monthly_file = MarketData.get_monthly_file_path(date_str[:7])
+        date_clean = str(date_str).split()[0]
+        df = pd.DataFrame()
+
+        if os.path.exists(monthly_file):
+            try:
+                df = pd.read_parquet(monthly_file)
+                if 'trade_date' in df.columns:
+                    df['trade_date'] = df['trade_date'].astype(str).str.split().str[0]
+                    df = df[df['trade_date'] == date_clean]
+                if 'ts_code' in df.columns:
+                    df = df[df['ts_code'] == ts_code]
+            except Exception as e:
+                df = pd.DataFrame()
+
+        if df.empty:
+            cache_file = os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{date_clean}.csv")
+            if os.path.exists(cache_file):
+                try:
+                    df = pd.read_csv(cache_file)
+                except Exception as e:
+                    pass
+
+        if not df.empty:
+            try:
+                if 'trade_time' in df.columns:
+                    df['时间'] = pd.to_datetime(df['trade_time'])
+                elif 'date' in df.columns and 'time' in df.columns:
+                    df['时间'] = pd.to_datetime(df['date'].astype(str) + " " + df['time'].astype(str))
+                elif 'time' in df.columns:
+                    df['时间'] = pd.to_datetime(date_clean + " " + df['time'].astype(str))
+                elif '时间' in df.columns:
+                    df['时间'] = pd.to_datetime(df['时间'])
+
+                if 'close' in df.columns:
+                    df = df.rename(columns={'close': '收盘'})
+                elif 'price' in df.columns:
+                    df = df.rename(columns={'price': '收盘'})
+
+                if '时间' in df.columns and '收盘' in df.columns:
+                    return df[['时间', '收盘']].sort_values("时间").drop_duplicates('时间')
+            except Exception as e:
+                pass
+        return pd.DataFrame()
+
+    @staticmethod
+    def _fetch_intraday_from_api(code: str, date_str: str) -> pd.DataFrame:
+        api_url = f"{SimConfig.API_BASE_URL.rstrip('/')}?type=specifiedIntraday&code={code}&date={date_str}"
+        for attempt in range(1, SimConfig.MAX_RETRIES + 1):
+            try:
+                resp = requests.get(api_url, timeout=30)
+                if resp.status_code == 404: return pd.DataFrame()
+                resp.raise_for_status()
+                data = resp.json()
+                if not data: continue
+                if isinstance(data, dict): data = data.get("data") or data.get("trends")
+
+                df = pd.DataFrame(data)
+                if df.empty: return pd.DataFrame()
+
+                df["时间"] = pd.to_datetime(df["date"] + " " + df["time"])
+                df["收盘"] = df.get("price", df.get("close", 0.0))
+                df["开盘"] = df.get("open", df["收盘"])
+                df["最高"] = df.get("high", df["收盘"])
+                df["最低"] = df.get("low", df["收盘"])
+                df["成交量"] = df.get("volume", df.get("vol", 0.0))
+                return df[["时间", "开盘", "收盘", "最高", "最低", "成交量"]].sort_values("时间")
+            except Exception as e:
+                time_module.sleep(SimConfig.EXPONENTIAL_BACKOFF_BASE ** attempt)
+        return pd.DataFrame()
+
+    import shutil
+    @staticmethod
+    def preload_from_models(start_date: str, end_date: str):
+        if os.path.exists(SimConfig.DATA_CACHE_DIR):
+            shutil.rmtree(SimConfig.DATA_CACHE_DIR)
+        os.makedirs(SimConfig.DATA_CACHE_DIR, exist_ok=True)
+
+        dates = MarketData.get_model_dates(start_date, end_date)
+        if not dates: return
+        date_map = MarketData.build_date_map(dates)
+        today_str = MarketData._get_current_cn_date()
+
+        raw_pairs = set()
+        for m_date in dates:
+            t1, t2 = date_map[m_date]
+            model_file = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_{m_date}.json")
+            with open(model_file, 'r', encoding='utf-8') as f:
+                targets, _ = MarketData.parse_sirius_model(json.load(f))
+                for t in targets:
+                    code = MarketData._convert_code(t['code'])
+                    if t1 <= today_str: raw_pairs.add((code, t1))
+                    if t2 <= today_str: raw_pairs.add((code, t2))
+
+        parquet_keys_set = set()
+        unique_months = set()
+        for _, d in raw_pairs:
+            clean_d = d.replace('-', '')
+            unique_months.add(f"{clean_d[:4]}-{clean_d[4:6]}")
+
+        for ym in unique_months:
+            p_path = MarketData.get_monthly_file_path(ym)
+            if os.path.exists(p_path):
+                try:
+                    df_p = pd.read_parquet(p_path, columns=['ts_code', 'trade_date'])
+                    df_p['trade_date'] = pd.to_datetime(df_p['trade_date']).dt.strftime('%Y-%m-%d')
+                    df_p['ts_code'] = df_p['ts_code'].astype(str)
+                    parquet_keys_set.update(set(zip(df_p['ts_code'], df_p['trade_date'])))
+                except Exception as e:
+                    pass
+
+        last_month = None
+        for ts_code, t_date in raw_pairs:
+            if (ts_code, t_date) in parquet_keys_set:
+                continue
+            csv_path = os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv")
+            if os.path.exists(csv_path): continue
+
+            if last_month and t_date[:7] != last_month:
+                MarketData.merge_monthly_data(last_month)
+            last_month = t_date[:7]
+
+            df = MarketData._fetch_intraday_from_api(ts_code.split('.')[0], t_date)
+            if not df.empty:
+                df["ts_code"] = ts_code
+                df["trade_date"] = t_date
+                standard_columns = ['时间', '开盘', '收盘', '最高', '最低', '成交量', 'ts_code', 'trade_date']
+                df = df[standard_columns]
+                df.to_csv(csv_path, index=False)
+
+            time_module.sleep(SimConfig.API_REQUEST_INTERVAL)
+
+        if last_month:
+            MarketData.merge_monthly_data(last_month)
+
+# ========================= 4. 账户 & 执行器 (SIRIUS 核心) =========================
+class MockAccount:
+    def __init__(self, initial_cash):
+        self.cash, self.positions = initial_cash, {}
+
+    def start_day(self):
+        for c in self.positions:
+            self.positions[c]['can_sell'] = self.positions[c]['volume']
+
+    # 【修改】增加 name 参数记录股票名称
+    def order(self, date, time_v, code, side, vol, price, reason, name=""):
+        vol = (vol // 100) * 100
+        if vol <= 0: return False
+        cost = vol * price
+        
+        actual_name = name if name else code
+        display_name = f"{code}({actual_name})"
+
+        if side == 'buy' and self.cash >= cost:
+            self.cash -= cost
+            p = self.positions.get(code, {'volume': 0, 'avg_price': 0.0, 'can_sell': 0, 'name': actual_name})
+
+            p['avg_price'] = (p['volume'] * p['avg_price'] + cost) / (p['volume'] + vol)
+            p['volume'] += vol
+            p['name'] = actual_name
+            if 'can_sell' not in p: p['can_sell'] = 0
+
+            self.positions[code] = p
+            logger.info(f"💰 {date} {time_v} | 买入 {display_name} {vol}股 @{price:.2f} ({reason})")
+            return True
+
+        elif side == 'sell':
+            p = self.positions.get(code)
+            if p and p.get('can_sell', 0) >= vol:
+                self.cash += cost
+                p['volume'] -= vol
+                p['can_sell'] -= vol
+                if p['volume'] <= 0: del self.positions[code]
+                else: self.positions[code] = p
+                logger.info(f"💰 {date} {time_v} | 卖出 {display_name} {vol}股 @{price:.2f} ({reason})")
+                return True
+        return False
+
+# ========================= 严格对照执行器 =========================
+class SiriusStrictExecutor:
+    def __init__(self, account):
+        self.account = account
+        # 【新增】列表以追踪交易和快照
+        self.all_trades = []
+        self.daily_snapshots = []
+        
+    # 【新增】每日持仓快照功能
+    def save_daily_snapshot(self, date_str):
+        total_value = self.account.cash
+        day_snaps = [] 
+
+        for code, pos in self.account.positions.items():
+            df = MarketData.get_minute_data(code, date_str)
+            last_price = df.iloc[-1]['收盘'] if not df.empty else pos['avg_price']
+            market_value = pos['volume'] * last_price
+            total_value += market_value
+
+            day_snaps.append({
+                'date': date_str, 'code': code, 'name': pos.get('name', code),
+                'volume': pos['volume'], 'can_sell': pos.get('can_sell', 0),
+                'avg_price': pos['avg_price'], 'last_price': last_price,
+                'market_value': market_value, 'weight': 0.0
+            })
+
+        for snap in day_snaps:
+            snap['weight'] = snap['market_value'] / total_value if total_value > 0 else 0
+            self.daily_snapshots.append(snap)
+
+        self.daily_snapshots.append({
+            'date': date_str, 'code': 'CASH', 'name': '现金',
+            'volume': 0, 'can_sell': 0, 'avg_price': 0, 'last_price': 1,
+            'market_value': self.account.cash, 'weight': self.account.cash / total_value if total_value > 0 else 0
+        })
+        self.daily_snapshots.append({
+            'date': date_str, 'code': 'TOTAL', 'name': '总资产',
+            'volume': 0, 'market_value': total_value, 'weight': 1.0
+        })
+        return total_value
+        
+    # 【新增】导出 Excel 功能
+    def export_to_excel(self):
+        with pd.ExcelWriter(SimConfig.TRADE_RECORD_FILE, engine='openpyxl') as writer:
+            if self.all_trades:
+                df_trades = pd.DataFrame(self.all_trades)
+                df_trades['amount'] = df_trades['volume'] * df_trades['price']
+                df_trades['day'] = pd.Categorical(df_trades['date']).codes + 1
+                df_trades.to_excel(writer, sheet_name='交易记录', index=False)
+                logger.info(f"导出交易记录: {len(df_trades)} 笔")
+            if self.daily_snapshots:
+                df_snap = pd.DataFrame(self.daily_snapshots)
+                df_snap.to_excel(writer, sheet_name='持仓快照', index=False)
+                logger.info(f"导出持仓快照: {len(df_snap)} 条")
+
+    def simulate_day(self, date_str, targets, pos_factor, pre_closes):
+        self.account.start_day()
+        trade_time_morning = time(9, 30)
+
+        # 构建名称映射字典用于交易记录
+        name_map = {t['code']: t['name'] for t in targets}
+        for code, pos in self.account.positions.items():
+            if code not in name_map: name_map[code] = pos.get('name', code)
+
+        prices_1000 = {}
+        all_codes = list(set([t['code'] for t in targets] + list(self.account.positions.keys())))
+        for code in all_codes:
+            df = MarketData.get_minute_data(code, date_str)
+            if not df.empty:
+                target_dt = datetime.combine(datetime.strptime(date_str, "%Y-%m-%d").date(), trade_time_morning)
+                mask = df['时间'] >= target_dt
+                prices_1000[code] = df.loc[mask, '收盘'].iloc[0] if mask.any() else df.iloc[-1]['收盘']
+
+        total_asset = self.account.cash + sum(p['volume'] * prices_1000.get(c, p['avg_price']) for c, p in self.account.positions.items())
+        effective_asset = total_asset * SimConfig.TRADE_RATIO * pos_factor
+        target_vols = {t['code']: int(effective_asset * t['weight'] / t['ref_price'] / 100) * 100 for t in targets}
+
+        # A. 卖出指令
+        for code, pos in list(self.account.positions.items()):
+            t_vol = target_vols.get(code, 0)
+            if pos['volume'] > t_vol:
+                sell_vol = pos['can_sell']
+                if sell_vol > 0:
+                    real_p = prices_1000.get(code)
+                    pre_close = pre_closes.get(code, pos['avg_price'])
+                    if real_p and real_p >= pre_close:
+                        stk_name = name_map.get(code, code)
+                        if self.account.order(date_str, trade_time_morning, code, 'sell', sell_vol, real_p, "早盘止盈", stk_name):
+                            # 【新增】记录交易
+                            self.all_trades.append({
+                                'date': date_str, 'time': trade_time_morning.strftime('%H:%M'),
+                                'code': code, 'name': stk_name, 'side': 'sell',
+                                'volume': sell_vol, 'price': real_p, 'reason': "早盘止盈"
+                            })
+
+        # B. 买入指令
+        available_cash = self.account.cash * SimConfig.TRADE_RATIO
+        for code, t_vol in target_vols.items():
+            cur_vol = self.account.positions.get(code, {}).get('volume', 0)
+            if t_vol > cur_vol:
+                buy_vol = t_vol - cur_vol
+                real_p = prices_1000.get(code)
+                ref_p = next(t['ref_price'] for t in targets if t['code'] == code)
+                if real_p and real_p <= ref_p:
+                    exec_p = min(real_p, ref_p)
+                    if self.account.cash >= buy_vol * exec_p:
+                        stk_name = name_map.get(code, code)
+                        if self.account.order(date_str, trade_time_morning, code, 'buy', buy_vol, exec_p, "早盘调仓", stk_name):
+                             # 【新增】记录交易
+                             self.all_trades.append({
+                                'date': date_str, 'time': trade_time_morning.strftime('%H:%M'),
+                                'code': code, 'name': stk_name, 'side': 'buy',
+                                'volume': buy_vol, 'price': exec_p, 'reason': "早盘调仓"
+                            })
+
+        # --- 2. 尾盘强制卖出阶段 ---
+        trade_time_close = time(14, 50)
+        prices_1450 = {}
+        for code in self.account.positions.keys():
+            df = MarketData.get_minute_data(code, date_str)
+            if not df.empty:
+                target_dt = datetime.combine(datetime.strptime(date_str, "%Y-%m-%d").date(), trade_time_close)
+                mask = df['时间'] >= target_dt
+                prices_1450[code] = df.loc[mask, '收盘'].iloc[0] if mask.any() else df.iloc[-1]['收盘']
+
+        for code, pos in list(self.account.positions.items()):
+            t_vol = target_vols.get(code, 0)
+            if pos['volume'] > t_vol:
+                sell_needed = pos['volume'] - t_vol
+                actual_sell = min(pos.get('can_sell', 0), sell_needed)
+
+                if actual_sell > 0:
+                    real_p = prices_1450.get(code)
+                    if real_p:
+                        exec_p = real_p
+                        stk_name = name_map.get(code, code)
+                        if self.account.order(date_str, trade_time_close, code, 'sell', actual_sell, exec_p, "尾盘强制", stk_name):
+                             # 【新增】记录交易
+                             self.all_trades.append({
+                                'date': date_str, 'time': trade_time_close.strftime('%H:%M'),
+                                'code': code, 'name': stk_name, 'side': 'sell',
+                                'volume': actual_sell, 'price': exec_p, 'reason': "尾盘强制"
+                            })
+
+# ========================= 回测主函数 =========================
+def run_strict_backtest():
+    if SimConfig.ENABLE_PRELOAD:
+        MarketData.preload_from_models(SimConfig.START_DATE, SimConfig.END_DATE)
+        if getattr(SimConfig, 'ONLY_PRELOAD', False):
+            logger.info("预加载完成，退出")
+            return
+
+    account = MockAccount(SimConfig.INITIAL_CASH)
+    executor = SiriusStrictExecutor(account)
+    model_dates = MarketData.get_model_dates(SimConfig.START_DATE, SimConfig.END_DATE)
+    if not model_dates:
+        logger.error("未找到模型文件")
+        return
+    logger.info(f"模型日期: {model_dates}")
+
+    tz_cn = timezone(timedelta(hours=8))
+    today_cn = datetime.now(tz_cn).strftime('%Y-%m-%d')
+
+    trade_map = {}
+    for i, m_date in enumerate(model_dates):
+        if i < len(model_dates) - 1:
+            trade_date = model_dates[i + 1]
+        else:
+            if today_cn not in model_dates and today_cn > m_date:
+                trade_date = today_cn
+            else:
+                model_dt = datetime.strptime(m_date, "%Y-%m-%d")
+                trade_date = (model_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+        trade_map[trade_date] = m_date
+
+    logger.info(f"交易日映射: {trade_map}")
+
+    total_asset = SimConfig.INITIAL_CASH
+
+    for trade_date in sorted(trade_map.keys()):
+        if not (SimConfig.START_DATE <= trade_date <= SimConfig.END_DATE) and trade_date != today_cn:
+          continue
+        model_date = trade_map[trade_date]
+        logger.info(f"========== 模型[{model_date}] -> 交易[{trade_date}] ==========")
+
+        model_file = os.path.join(SimConfig.MODEL_HISTORY_DIR, f"{SimConfig.MODEL_NAME_PREFIX}_{model_date}.json")
+
+        if not os.path.exists(model_file):
+            logger.error(f"模型文件不存在: {model_file}")
+            continue
+
+        with open(model_file, 'r', encoding='utf-8') as f:
+            targets, pf = MarketData.parse_sirius_model(json.load(f))
+
+        pre_closes = {t['code']: t['ref_price'] for t in targets}
+        executor.simulate_day(trade_date, targets, pf, pre_closes)
+
+        # 【修改】使用统一的快照方法计算并记录当日资产情况
+        total_asset = executor.save_daily_snapshot(trade_date)
+        logger.info(f"交易日结束资产: {total_asset:.2f}")
+
+    # 【新增】导出所有交易和快照到 Excel
+    executor.export_to_excel()
+    logger.info(f"回测完成，结果保存至: {SimConfig.TRADE_RECORD_FILE}")
+
+    # ==========================================
+    # 【修改】参照代码2的最终统计样式
+    # ==========================================
+    if executor.all_trades:
+        df = pd.DataFrame(executor.all_trades)
+        buy_cnt = len(df[df['side'] == 'buy'])
+        sell_cnt = len(df[df['side'] == 'sell'])
+        
+        final_snap = [s for s in executor.daily_snapshots if s.get('code') == 'TOTAL']
+        if final_snap:
+            final_asset = final_snap[-1]['market_value']
+            ret = (final_asset / SimConfig.INITIAL_CASH - 1) * 100
+            logger.info(f"\n{'='*50}\n回测统计:\n  初始资金: {SimConfig.INITIAL_CASH:.2f}\n"
+                        f"  最终资产: {final_asset:.2f}\n  收益率: {ret:.2f}%\n"
+                        f"  买入次数: {buy_cnt}\n  卖出次数: {sell_cnt}\n{'='*50}")
+
+if __name__ == "__main__":
+    run_strict_backtest()
+
+
+
 # @title SIRIUS T1 BackTest Simulation (Dynamic Edition)
 
 #!/usr/bin/env python3
