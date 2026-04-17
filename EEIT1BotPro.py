@@ -434,7 +434,9 @@ class QMTClient:
         with self.lock:
             try:
                 tick = xtdata.get_full_tick([code])
+                #logger.info(f"- 标的{code}全推数据日线最新值:{tick}")
                 if code in tick and "lastPrice" in tick[code]:
+                    logger.info(f"- 标的{code}最新价格:{tick[code]['lastPrice']}")
                     return tick[code]['lastPrice']
                 # 备用：获取日线最近收盘价
                 data = xtdata.get_market_data([code], period='1d', count=1)
@@ -462,6 +464,7 @@ class QMTClient:
         if ref_price <= 0:
             return None
         real = self.get_realtime_price(code)
+        logger.info(f"- 标的{code}:实时价格 {real:.2f}")
         if real is None:
             return ref_price
         return min(real, ref_price)
@@ -588,32 +591,40 @@ class QMTClient:
                 logger.debug(f"当前时间 {end_time} 早于开盘时间，跳过动态参考价获取")
                 return None
 
-            # 格式化时间字符串，确保长度为14位（YYYYMMDDHHMMSS）
-            start_str = start_time.strftime("%Y%m%d%H%M%S").ljust(14, '0')
-            end_str = end_time.strftime("%Y%m%d%H%M%S").ljust(14, '0')
+            # 格式化时间字符串为8位日期格式（YYYYMMDD）
+            start_date = start_time.strftime("%Y%m%d")
+            end_date = end_time.strftime("%Y%m%d")
 
-            # 订阅分钟线数据（确保数据实时同步）
-            #xtdata.subscribe_quote([code], period="1m", count=minutes + 10)
-            #time.sleep(1)  # 等待数据同步
-
-            # 下载历史分钟线数据（备用，确保本地有数据）
-            xtdata.download_history_data(code, '1m', start_str, end_str)
+            # 下载历史分钟线数据
+            xtdata.download_history_data(code, period='1m', start_time=start_date, end_time=end_date)
 
             # 获取市场数据
             data = xtdata.get_market_data(
                 field_list=['close'],
                 stock_list=[code],
                 period='1m',
-                start_time=start_str,
-                end_time=end_str
+                start_time=start_date,
+                end_time=end_date
             )
 
-            if data is not None and code in data:
-                df = data[code]
+            # 关键修复：正确处理数据结构
+            if data is not None and 'close' in data:
+                df = data['close']
                 if not df.empty:
-                    # 只取最近 minutes 分钟的数据（避免因早盘数据不足导致均价偏低）
-                    df_recent = df.tail(minutes)
-                    return float(df_recent['close'].mean())
+                    # 直接获取股票代码对应的数据行
+                    if code in df.index:
+                        # 提取该股票的所有收盘价数据
+                        prices = df.loc[code]
+                        # 检查是否有足够有效数据
+                        valid_prices = prices.dropna()
+                        if not valid_prices.empty:
+                            # 取最近minutes分钟的有效数据
+                            recent_prices = valid_prices.tail(minutes)
+                            if not recent_prices.empty:
+                                # 计算均价（直接对Series求平均）
+                                return float(recent_prices.mean())
+            
+            logger.warning(f"获取 {code} 动态参考价失败：数据不足或处理异常")
         except Exception as e:
             logger.warning(f"获取 {code} 动态参考价失败: {e}")
         return None
@@ -806,6 +817,15 @@ class SIRIUSBot:
 
     def _generate_dynamic_orders(self, current_positions, target_holdings,
                                  total_asset, position_factor, available_cash):
+                                     
+        logger.info("="*50)
+        logger.info("开始准备生成动态订单，输入参数详情:")
+        logger.info(f"- 总资产: {total_asset:.2f}")
+        logger.info(f"- 仓位因子: {position_factor:.2f}")
+        logger.info(f"- 可用现金: {available_cash:.2f}")
+        logger.info(f"- 当前持仓数量: {len(current_positions) if current_positions else 0}")
+        logger.info(f"- 目标持仓数量: {len(target_holdings) if target_holdings else 0}")
+        
         buy_orders = []
         sell_orders = []
         now_ts = time.time()
@@ -815,27 +835,40 @@ class SIRIUSBot:
             code = holding["code"]
             ref_price = holding["ref_price"]  # 模型输出的参考价（通常是昨收）
             stk_name = self.code_to_name.get(code, code)
+            logger.info(f"- 标的{code}名称: {stk_name}")
 
             real_price = self.qmt.get_realtime_price(code)
-            if real_price is None or real_price <= 0: continue
+            if real_price is None or real_price <= 0: 
+                logger.info(f"- 标的{code}价格无效")
+                continue
 
             # 真实交易中，卖出参考的“昨收价”通过 QMT 获取更准确
             pre_close = self.qmt.get_pre_close(code)
-            if pre_close is None or pre_close <= 0: pre_close = ref_price
+            logger.info(f"- 标的{code}昨日收盘价: {pre_close}")
+            if pre_close is None or pre_close <= 0: 
+                logger.info(f"- 标的{code}昨日收盘价无效")
+                pre_close = ref_price
 
             dyn_price = self.qmt.get_dynamic_reference_price(code, Config.LOOKBACK_MINUTES)
-            if dyn_price is None or dyn_price <= 0: continue
+            logger.info(f"- 标的{code}实时动态参考价: {dyn_price:.2f}")
+            if dyn_price is None or dyn_price <= 0: 
+                logger.info(f"- 标的{code}动态参考价无效")
+                continue
 
             deviation = (real_price - dyn_price) / dyn_price * 100
+            logger.info(f"- 标的{code}偏离度: {deviation:.2f}")
 
             # 冷却检查
             if now_ts - self.last_dynamic_trade_time.get(code, 0) < Config.INTRADAY_COOLDOWN_SEC:
+                logger.info(f"- 标的{code}冷却处理")
                 continue
 
             pos = current_positions.get(code, {})
             current_vol = pos.get("volume", 0)
             can_sell = pos.get("can_sell", 0)
-
+            
+            logger.info(f"- 标的{code}持仓信息 pos:{str(pos)} current_vol:{current_vol} can_sell:{can_sell}")
+               
             # ================= [买入逻辑：对齐回测] =================
             if deviation <= Config.BUY_THRESHOLD_PCT:
                 # 使用 Config 里的容忍度
@@ -844,14 +877,15 @@ class SIRIUSBot:
                         risk_asset, holding["weight"], real_price
                     )
                     buy_vol = ((target_vol - current_vol) // 100) * 100
+                    logger.info(f"- 标的买入逻辑 target_vol:{target_vol} buy_vol:{buy_vol}")
                     if buy_vol >= 100:
                         buy_orders.append({
                             "code": code, "volume": buy_vol, "price": real_price, "name": stk_name
                         })
                         self.last_dynamic_trade_time[code] = now_ts
                 else:
-                    logger.debug(f"⚠️ {stk_name} 触发买入信号但价格过高: 现价{real_price} > 参考价{ref_price}*(1+{Config.PRICE_TOLERANCE})")
-
+                    logger.debug(f"⚠️ {code}{stk_name} 触发买入信号但价格过高: 现价{real_price} > 参考价{ref_price}*(1+{Config.PRICE_TOLERANCE})")
+     
             # ================= [卖出逻辑：对齐回测] =================
             elif deviation >= Config.SELL_THRESHOLD_PCT:
                 # 使用 Config 里的容忍度
@@ -861,13 +895,17 @@ class SIRIUSBot:
                     )
                     excess = current_vol - target_vol
                     sell_vol = (min(can_sell, excess) // 100) * 100
+                    logger.info(f"- 标的卖出逻辑 target_vol:{target_vol} sell_vol:{sell_vol}")
                     if sell_vol >= 100:
                         sell_orders.append({
                             "code": code, "volume": sell_vol, "price": real_price, "name": stk_name
                         })
                         self.last_dynamic_trade_time[code] = now_ts
                 else:
-                    logger.debug(f"⚠️ {stk_name} 触发卖出信号但价格过低: 现价{real_price} < 昨收{pre_close}*(1-{Config.PRICE_TOLERANCE})")
+                    logger.debug(f"⚠️ {code}{stk_name} 触发卖出信号但价格过低: 现价{real_price} < 昨收{pre_close}*(1-{Config.PRICE_TOLERANCE})")
+                    
+            else:
+                logger.info(f"- 标的偏离{deviation:.2f}, 买入阀值{Config.BUY_THRESHOLD_PCT}和卖出阀数值{Config.SELL_THRESHOLD_PCT}")
 
         return buy_orders, sell_orders
 
