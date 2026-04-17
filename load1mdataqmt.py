@@ -9,7 +9,7 @@ import glob
 import requests
 import random
 import shutil
-from typing import List, Tuple, Set
+from typing import Dict, List, Tuple, Set, Optional, Tuple, Any
 
 # ========================= 日志初始化 (提前，避免未定义错误) =========================
 logger = logging.getLogger("SIRIUS_Simulator")
@@ -34,8 +34,8 @@ except ImportError:
     logger.warning("miniQMT 未安装或无法导入，preload_from_miniqmt 将不可用")
 
 # ========================= 1. 配置 =========================
-START_DATE = "2026-01-05"
-END_DATE = "2026-04-17"
+START_DATE = "2026-03-02"
+END_DATE = "2026-03-03"
 
 MODEL_HISTORY_DIR = "./historical_models"      # 统一变量名
 MONTHLY_DIR = "./monthly_data"
@@ -69,22 +69,22 @@ MODEL_REQUEST_INTERVAL = 0.5
 class ModelDownloader:
     @staticmethod
     def _build_model_url(date_str: str) -> str:
-        return f"{MODEL_API_BASE_URL}_{date_str}"
+        return f"{MODEL_API_BASE_URL}{date_str}.json"
 
     @staticmethod
-    def _fetch_with_retry(url: str, retries: int = MODEL_REQUEST_RETRIES, timeout: int = MODEL_REQUEST_TIMEOUT) -> dict | None:
-        for attempt in range(1, retries + 1):
-            try:
-                resp = requests.get(url, timeout=timeout, headers={'User-Agent': 'SIRIUS-Bot/1.0'})
-                if resp.status_code == 200:
-                    return resp.json()
-                else:
-                    logger.warning(f"HTTP {resp.status_code} from {url}, attempt {attempt}/{retries}")
-            except Exception as e:
-                logger.warning(f"Request failed: {e}, attempt {attempt}/{retries}")
-            if attempt < retries:
-                time_module.sleep(2 ** attempt)
-        return None
+    def _fetch_with_retry(url: str, retries: int = MODEL_REQUEST_RETRIES, timeout: int = MODEL_REQUEST_TIMEOUT) -> Optional[Dict]:
+            for attempt in range(1, retries + 1):
+                try:
+                    resp = requests.get(url, timeout=timeout, headers={'User-Agent': 'SIRIUS-Bot/1.0'}, proxies=PROXIES)
+                    if resp.status_code == 200:
+                        return resp.json()
+                    else:
+                        logger.warning(f"HTTP {resp.status_code} from {url}, attempt {attempt}/{retries}")
+                except Exception as e:
+                    logger.warning(f"Request failed: {e}, attempt {attempt}/{retries}")
+                if attempt < retries:
+                    time_module.sleep(2 ** attempt)
+            return None
 
     @staticmethod
     def download_model_for_date(date_str: str, force: bool = False) -> bool:
@@ -298,7 +298,7 @@ class MarketData:
         api_url = f"{API_BASE_URL.rstrip('/')}?type=specifiedIntraday&code={code}&date={date_str}"
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                resp = requests.get(api_url, timeout=30, proxies=PROXIES)   # 添加代理
+                resp = requests.get(api_url, timeout=30)   # 添加代理
                 if resp.status_code == 404:
                     return pd.DataFrame()
                 resp.raise_for_status()
@@ -415,52 +415,139 @@ class MarketData:
 
     @staticmethod
     def _fetch_miniqmt_intraday(code: str, date_str: str) -> pd.DataFrame:
-        """通过 miniQMT 获取某只股票某一天的1分钟K线数据"""
+        """最终稳定版：miniQMT 获取1分钟数据"""
+
         if not MINIQMT_AVAILABLE:
-            raise RuntimeError("miniQMT 不可用，请检查 xtquant 导入")
+            raise RuntimeError("miniQMT 不可用")
 
         miniqmt_code = MarketData._to_miniqmt_code(code)
-        start_time = date_str.replace('-', '')
-        end_time = start_time
+
+        # ✅ 使用完整时间范围（关键）
+        start_time = date_str.replace('-', '') + "000000"
+        end_time = date_str.replace('-', '') + "235959"
+
         try:
-            xtdata.download_history_data(miniqmt_code, '1m', start_time, end_time)
-            data = xtdata.get_market_data(
-                stock_list=[miniqmt_code],
+            # =========================
+            # Step1: 下载数据到本地
+            # =========================
+            xtdata.download_history_data(
+                miniqmt_code,
                 period='1m',
                 start_time=start_time,
-                end_time=end_time,
-                fields=['open', 'close', 'high', 'low', 'volume']
+                end_time=end_time
             )
-            if data is None or len(data) == 0:
-                return pd.DataFrame()
 
-            if isinstance(data, dict) and miniqmt_code in data:
-                df = data[miniqmt_code]
-                if isinstance(df, pd.DataFrame):
-                    df = df.reset_index().rename(columns={'index': '时间'})
-                else:
-                    df = pd.DataFrame(df)
-                    if 'time' in df.columns:
-                        df = df.rename(columns={'time': '时间'})
+            # =========================
+            # Step2: 获取数据（兼容新旧接口）
+            # =========================
+            try:
+                data = xtdata.get_market_data_ex(
+                    field_list=['time', 'open', 'close', 'high', 'low', 'volume'],
+                    stock_list=[miniqmt_code],
+                    period='1m',
+                    start_time=start_time,
+                    end_time=end_time
+                )
+            except Exception:
+                data = xtdata.get_market_data(
+                    field_list=['time', 'open', 'close', 'high', 'low', 'volume'],
+                    stock_list=[miniqmt_code],
+                    period='1m',
+                    start_time=start_time,
+                    end_time=end_time
+                )
+
+            # =========================
+            # Step3: 统一结构
+            # =========================
+            df = None
+
+            if isinstance(data, dict):
+                df = data.get(miniqmt_code)
             elif isinstance(data, pd.DataFrame):
-                df = data.reset_index().rename(columns={'index': '时间'})
-            else:
+                df = data
+
+            if df is None or len(df) == 0:
+                logger.warning(f"miniQMT 空数据: {code} {date_str}")
                 return pd.DataFrame()
 
-            rename_map = {
-                'open': '开盘', 'close': '收盘', 'high': '最高',
-                'low': '最低', 'volume': '成交量', 'vol': '成交量'
-            }
-            df = df.rename(columns=rename_map)
-            required = ['时间', '开盘', '收盘', '最高', '最低', '成交量']
-            for col in required:
+            df = pd.DataFrame(df)
+
+            # =========================
+            # Step4: 字段标准化
+            # =========================
+            df = df.rename(columns={
+                'time': '时间',
+                'open': '开盘',
+                'close': '收盘',
+                'high': '最高',
+                'low': '最低',
+                'volume': '成交量',
+                'vol': '成交量'
+            })
+
+            required_cols = ['时间', '开盘', '收盘', '最高', '最低', '成交量']
+
+            for col in required_cols:
                 if col not in df.columns:
+                    logger.warning(f"字段缺失 {col}: {code} {date_str}")
                     return pd.DataFrame()
-            df['时间'] = pd.to_datetime(df['时间'])
-            df = df.sort_values('时间')
-            return df[required]
+
+            # =========================
+            # Step5: 时间解析（核心修复）
+            # =========================
+            raw_time = df['时间']
+
+            try:
+                if raw_time.dtype in ['int64', 'float64']:
+                    length = raw_time.astype(str).str.len().iloc[0]
+
+                    if length >= 13:
+                        df['时间'] = pd.to_datetime(raw_time, unit='ms', errors='coerce')
+                    else:
+                        df['时间'] = pd.to_datetime(raw_time, unit='s', errors='coerce')
+                else:
+                    df['时间'] = pd.to_datetime(raw_time, errors='coerce')
+            except Exception as e:
+                logger.warning(f"时间解析异常 {code} {date_str}: {e}")
+                return pd.DataFrame()
+            
+            # ⭐ 核心修复（加这一行）
+            df['时间'] = df['时间'] + pd.Timedelta(hours=8)
+            df = df.dropna(subset=['时间'])
+
+            if df.empty:
+                logger.warning(f"时间解析后为空: {code} {date_str}")
+                return pd.DataFrame()
+
+            # =========================
+            # Step6: 调试（关键定位）
+            # =========================
+            logger.debug(
+                f"{code} 时间范围: {df['时间'].min()} ~ {df['时间'].max()} 行数:{len(df)}"
+            )
+
+            # =========================
+            # Step7: 交易时间过滤（宽松版，避免误杀）
+            # =========================
+            df = df[
+                (df['时间'].dt.hour >= 9) &
+                (df['时间'].dt.hour <= 15)
+            ]
+
+            if df.empty:
+                logger.warning(f"过滤后为空: {code} {date_str}")
+                return pd.DataFrame()
+
+            # =========================
+            # Step8: 排序输出
+            # =========================
+            df = df.sort_values('时间').reset_index(drop=True)
+
+            return df[required_cols]
+
         except Exception as e:
-            logger.error(f"miniQMT 获取 {code} {date_str} 失败: {e}")
+            logger.error(f"miniQMT 获取失败 {code} {date_str}: {e}")
             return pd.DataFrame()
 
     @staticmethod
@@ -554,15 +641,23 @@ class MarketData:
             combined.sort_values(['ts_code', '时间'], inplace=True)
             combined.to_parquet(qmt_parquet_path, index=False, engine='pyarrow')
             logger.info(f"已生成 {qmt_parquet_path}，共 {len(combined)} 行")
-
+        
+        if not df_min.empty:
+            logger.debug(f"成功获取 {code} {date} 行数: {len(df_min)}")
+        else:
+            logger.debug(f"失败/空数据 {code} {date}")
+            
         logger.info("miniQMT 数据预加载完成")
 
 # ========================= 回测主函数 =========================
 def run_download():
     # 先下载模型文件
-    ModelDownloader.download_models_for_date_range(START_DATE, END_DATE, force=False)
+    #ModelDownloader.download_models_for_date_range(START_DATE, END_DATE, force=False)
+    #logger.info("模型数据下载完成，退出")
+    
     # 然后通过 HTTP API 预加载分钟数据
-    MarketData.preload_from_models(START_DATE, END_DATE)
+    #MarketData.preload_from_models(START_DATE, END_DATE)
+    
     # 如果 miniQMT 可用，也通过它预加载一份（可选）
     if MINIQMT_AVAILABLE:
         MarketData.preload_from_miniqmt(START_DATE, END_DATE)
