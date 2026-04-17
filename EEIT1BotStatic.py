@@ -434,7 +434,9 @@ class QMTClient:
         with self.lock:
             try:
                 tick = xtdata.get_full_tick([code])
-                if code in tick and "lastPrice" in tick[code]:
+                #logger.info(f"- 标的{code}全推数据日线最新值:{tick}")
+                if code in tick and "lastPrice" in tick[code]:                    
+                    logger.info(f"- 标的{code}最新价格:{tick[code]['lastPrice']}")
                     return tick[code]['lastPrice']
                 # 备用：获取日线最近收盘价
                 data = xtdata.get_market_data([code], period='1d', count=1)
@@ -462,7 +464,7 @@ class QMTClient:
         if ref_price <= 0:
             return None
         real = self.get_realtime_price(code)
-        logger.info(f"- 标的{code}:实时价格 {real:.2f}")
+        logger.info(f"- 标的{code}:实时价格 {real:.2f} 参考价格 {ref_price:.2f}")
         if real is None:
             return ref_price
         return min(real, ref_price)
@@ -597,7 +599,7 @@ class TradeSignalGenerator:
         sell_orders: [{"code", "volume", "price", "name", "pre_close"}]
         """
         logger.info("="*50)
-        logger.info("开始生成订单，输入参数详情:")
+        logger.info("开始准备生成静态订单，输入参数详情:")
         logger.info(f"- 总资产: {total_asset:.2f}")
         logger.info(f"- 仓位因子: {position_factor:.2f}")
         logger.info(f"- 可用现金: {available_cash:.2f}")
@@ -623,6 +625,7 @@ class TradeSignalGenerator:
                 continue
             # 使用 effective_total_asset 计算目标股数
             target_vol = TradeSignalGenerator.calculate_target_volume(risk_adjusted_asset, effective_weight, buy_price)
+            logger.info(f"- 目标标的信息: code {code}, name {h['name']}, volume {target_vol}, buy_price {buy_price}, ref_price {h['ref_price']}")
             if target_vol > 0:
                 target_dict[code] = {
                     'volume': target_vol,
@@ -634,6 +637,7 @@ class TradeSignalGenerator:
         # 当前持仓字典
         current_dict = {}
         for code, pos in current_positions.items():
+            logger.info(f"- 当前持仓信息: code {code}, name {h['name']}, volume {pos['volume']}, can_sell {pos['can_sell']}, avg_price {pos['avg_price']}")
             current_dict[code] = {
                 'volume': pos['volume'],
                 'can_sell': pos['can_sell'],
@@ -646,6 +650,7 @@ class TradeSignalGenerator:
             target_vol = target_dict.get(code, {}).get('volume', 0)
             if cur['volume'] > target_vol:
                 sell_vol = min(cur['can_sell'], cur['volume'] - target_vol)
+                logger.info(f"{code} sell_vol:{sell_vol}")
                 if sell_vol > 0:
                     pre_close = qmt_client.get_pre_close(code)
                     if pre_close is None:
@@ -653,6 +658,7 @@ class TradeSignalGenerator:
                         continue
                     sell_price = qmt_client.get_sell_price_constrained(code, pre_close)
                     if sell_price is None:
+                        logger.warning(f"{code} 无法获取卖出价，跳过卖出")
                         continue
                     sell_orders.append({
                         'code': code,
@@ -669,7 +675,8 @@ class TradeSignalGenerator:
             cur_vol = current_dict.get(code, {}).get('volume', 0)
             if target['volume'] > cur_vol:
                 buy_vol = target['volume'] - cur_vol
-                buy_vol = (buy_vol // 100) * 100
+                buy_vol = (buy_vol // 100) * 100                
+                logger.info(f"{code} buy_vol:{buy_vol}")
                 if buy_vol > 0:
                     buy_orders.append({
                         'code': code,
