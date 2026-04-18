@@ -37,7 +37,7 @@ class SimConfig:
 
     # 【新增】输出路径配置
     OUTPUT_DIR = "./backtest_results"
-    TRADE_RECORD_FILE = os.path.join(OUTPUT_DIR, "trade_records_static.xlsx")
+    TRADE_RECORD_FILE = os.path.join(OUTPUT_DIR, f"trade_records_static_{MODEL_NAME_PREFIX}.xlsx")
     DAILY_SNAPSHOT_FILE = os.path.join(OUTPUT_DIR, "daily_snapshots.xlsx")
 
 # 创建目录
@@ -70,6 +70,14 @@ class MarketData:
         return os.path.join(SimConfig.MONTHLY_DIR, f"minute_data_{year_month}.parquet")
 
     @staticmethod
+    def get_limit_prices(pre_close: float) -> tuple:
+        if pre_close <= 0:
+            return None, None
+        limit_up = round(pre_close * (1 + SimConfig.LIMIT_UP_RATIO), 2)
+        limit_down = round(pre_close * (1 + SimConfig.LIMIT_DOWN_RATIO), 2)
+        return limit_up, limit_down
+
+    @staticmethod
     def build_date_map(all_model_dates: list) -> dict:
         current_date = MarketData._get_current_cn_date()
         date_map = {}
@@ -78,6 +86,13 @@ class MarketData:
             t2 = all_model_dates[idx + 2] if idx + 2 < len(all_model_dates) else current_date
             date_map[m_date] = (t1, t2)
         return date_map
+
+    # def _convert_code(code: str) -> str:
+    #     c = str(code).split('.')[0].zfill(6)
+    #     if len(c) > 6 and (c.endswith('.SH') or c.endswith('.SZ')):
+    #         return c
+    #     sh_prefixes = ('60', '68', '51', '56', '58', '55', '900')
+    #     return f"{c}.SH" if any(c.startswith(p) for p in sh_prefixes) else f"{c}.SZ"
 
     @staticmethod
     def _convert_code(code: str) -> str:
@@ -118,9 +133,16 @@ class MarketData:
             logger.error(f"解析模型失败: {e}")
             return [], 1.0
 
+
     @staticmethod
     def merge_monthly_data(year_month: str):
+        """
+        将 Cache 中的 CSV 数据合并到月度 Parquet 文件中
+        year_month 格式: "2026-04"
+        """
         p_path = MarketData.get_monthly_file_path(year_month)
+
+        # 1. 获取 Cache 中属于该月份的所有 CSV 文件
         cache_files = [
             f for f in os.listdir(SimConfig.DATA_CACHE_DIR)
             if f.endswith(".csv") and year_month in f
@@ -129,9 +151,11 @@ class MarketData:
         if not cache_files:
             return
 
+        # 2. 读取所有新下载的 CSV 数据
         new_dfs = []
         for f in cache_files:
             try:
+                # 【修复核心 1】：强制指定 ts_code 和 trade_date 为字符串格式
                 temp_df = pd.read_csv(
                     os.path.join(SimConfig.DATA_CACHE_DIR, f),
                     dtype={'ts_code': str, 'trade_date': str}
@@ -145,22 +169,36 @@ class MarketData:
 
         combined_df = pd.concat(new_dfs, ignore_index=True)
 
+        # 3. 如果原有 Parquet 存在，先读取它
         if os.path.exists(p_path):
             try:
                 old_df = pd.read_parquet(p_path)
+                # 【修复核心 2】：旧数据读出来后，强制转字符串并补齐 6 位，防止原本存的已经是 int
                 if 'ts_code' in old_df.columns:
                     old_df['ts_code'] = old_df['ts_code'].astype(str).str.zfill(6)
-                combined_df = pd.concat([old_df, combined_df], ignore_index=True)
-            except Exception as e:
-                logger.error(f"读取旧 Parquet 失败: {e}")
 
+                # 将旧数据和新数据合并
+                combined_df = pd.concat([old_df, combined_df], ignore_index=True)
+                logger.info(f"正在合并旧数据 ({len(old_df)}条) 与新数据...")
+            except Exception as e:
+                logger.error(f"读取旧 Parquet 失败，可能会导致覆盖: {e}")
+
+        # 4. 去重并保存
         if not combined_df.empty:
+            # 【修复核心 3】：在合并、排序和保存前，再次做最终的类型兜底
             combined_df['ts_code'] = combined_df['ts_code'].astype(str).str.zfill(6)
             combined_df['trade_date'] = combined_df['trade_date'].astype(str)
+
+            # 以时间、代码、日期作为唯一键去重
             combined_df.drop_duplicates(subset=['时间', 'ts_code', 'trade_date'], inplace=True)
+            # 排序，保证 Parquet 文件内部有序
             combined_df.sort_values(['ts_code', '时间'], inplace=True)
+
+            # 5. 写入 Parquet
             combined_df.to_parquet(p_path, index=False, engine='pyarrow')
-            
+            logger.info(f"✅ 月度数据已更新: {p_path} (新增后总计: {len(combined_df)} 条)")
+
+            # 6. 合并成功后删除对应的 CSV 缓存
             for f in cache_files:
                 try:
                     os.remove(os.path.join(SimConfig.DATA_CACHE_DIR, f))
@@ -183,6 +221,7 @@ class MarketData:
                 if 'ts_code' in df.columns:
                     df = df[df['ts_code'] == ts_code]
             except Exception as e:
+                logger.debug(f"Parquet读取失败 {ts_code}@{date_str}: {e}")
                 df = pd.DataFrame()
 
         if df.empty:
@@ -191,7 +230,7 @@ class MarketData:
                 try:
                     df = pd.read_csv(cache_file)
                 except Exception as e:
-                    pass
+                    logger.debug(f"CSV读取失败 {ts_code}_{date_clean}: {e}")
 
         if not df.empty:
             try:
@@ -212,12 +251,13 @@ class MarketData:
                 if '时间' in df.columns and '收盘' in df.columns:
                     return df[['时间', '收盘']].sort_values("时间").drop_duplicates('时间')
             except Exception as e:
-                pass
+                logger.debug(f"数据清洗失败 {ts_code}@{date_str}: {e}")
         return pd.DataFrame()
 
     @staticmethod
     def _fetch_intraday_from_api(code: str, date_str: str) -> pd.DataFrame:
         api_url = f"{SimConfig.API_BASE_URL.rstrip('/')}?type=specifiedIntraday&code={code}&date={date_str}"
+        logger.debug(f"🔍 [请求地址] {api_url}")
         for attempt in range(1, SimConfig.MAX_RETRIES + 1):
             try:
                 resp = requests.get(api_url, timeout=30)
@@ -231,20 +271,33 @@ class MarketData:
                 if df.empty: return pd.DataFrame()
 
                 df["时间"] = pd.to_datetime(df["date"] + " " + df["time"])
+
+                # 兼容 API 可能返回的字段名 (price 或 close)
                 df["收盘"] = df.get("price", df.get("close", 0.0))
+
+                # 获取其他字段，如果 API 没有提供，则使用收盘价/0 兜底，保证 Schema 完整
                 df["开盘"] = df.get("open", df["收盘"])
                 df["最高"] = df.get("high", df["收盘"])
                 df["最低"] = df.get("low", df["收盘"])
+                # 成交量可能是 volume 或 vol
                 df["成交量"] = df.get("volume", df.get("vol", 0.0))
+
+                # 返回完整的6个基础字段
                 return df[["时间", "开盘", "收盘", "最高", "最低", "成交量"]].sort_values("时间")
             except Exception as e:
+                logger.error(f"请求异常: {e}")
                 time_module.sleep(SimConfig.EXPONENTIAL_BACKOFF_BASE ** attempt)
         return pd.DataFrame()
 
-    import shutil
+
+    import shutil # 需要导入 shutil
     @staticmethod
     def preload_from_models(start_date: str, end_date: str):
+        logger.info("预下载器启动")
+
+        # 【新增】：每次运行前清空 Cache 目录，确保不读取旧的、残缺的中间文件
         if os.path.exists(SimConfig.DATA_CACHE_DIR):
+            logger.info(f"正在清理缓存目录: {SimConfig.DATA_CACHE_DIR}")
             shutil.rmtree(SimConfig.DATA_CACHE_DIR)
         os.makedirs(SimConfig.DATA_CACHE_DIR, exist_ok=True)
 
@@ -260,31 +313,41 @@ class MarketData:
             with open(model_file, 'r', encoding='utf-8') as f:
                 targets, _ = MarketData.parse_sirius_model(json.load(f))
                 for t in targets:
+                    # 统一格式化 code，确保匹配时字符串完全一致
                     code = MarketData._convert_code(t['code'])
                     if t1 <= today_str: raw_pairs.add((code, t1))
                     if t2 <= today_str: raw_pairs.add((code, t2))
 
+        # 构建已存在数据的集合
         parquet_keys_set = set()
+        # 修正：更鲁棒的月份提取方式 (处理 2023-10-27 或 20231027)
         unique_months = set()
         for _, d in raw_pairs:
-            clean_d = d.replace('-', '')
-            unique_months.add(f"{clean_d[:4]}-{clean_d[4:6]}")
+            clean_d = d.replace('-', '') # 转为 20231027
+            unique_months.add(f"{clean_d[:4]}-{clean_d[4:6]}") # 统一转为 2023-10
 
         for ym in unique_months:
             p_path = MarketData.get_monthly_file_path(ym)
             if os.path.exists(p_path):
                 try:
                     df_p = pd.read_parquet(p_path, columns=['ts_code', 'trade_date'])
+                    # 【关键修复】：确保 trade_date 转为与 raw_pairs 一致的字符串格式
+                    # 假设 raw_pairs 里的日期是 '2023-10-27'
                     df_p['trade_date'] = pd.to_datetime(df_p['trade_date']).dt.strftime('%Y-%m-%d')
                     df_p['ts_code'] = df_p['ts_code'].astype(str)
+
                     parquet_keys_set.update(set(zip(df_p['ts_code'], df_p['trade_date'])))
+                    logger.info(f"已加载 {ym} 历史数据，共 {len(df_p)} 条记录")
                 except Exception as e:
-                    pass
+                    logger.error(f"读取 Parquet 异常 {p_path}: {e}")
 
         last_month = None
         for ts_code, t_date in raw_pairs:
+            # 如果 Parquet 里已经有了，就不再下载
             if (ts_code, t_date) in parquet_keys_set:
                 continue
+
+            # 这里的 os.path.exists(csv) 在清空 Cache 后必然为 False，起到二次保险作用
             csv_path = os.path.join(SimConfig.DATA_CACHE_DIR, f"{ts_code}_{t_date}.csv")
             if os.path.exists(csv_path): continue
 
@@ -292,6 +355,7 @@ class MarketData:
                 MarketData.merge_monthly_data(last_month)
             last_month = t_date[:7]
 
+            # 执行下载
             df = MarketData._fetch_intraday_from_api(ts_code.split('.')[0], t_date)
             if not df.empty:
                 df["ts_code"] = ts_code
@@ -299,6 +363,7 @@ class MarketData:
                 standard_columns = ['时间', '开盘', '收盘', '最高', '最低', '成交量', 'ts_code', 'trade_date']
                 df = df[standard_columns]
                 df.to_csv(csv_path, index=False)
+                logger.info(f"下载成功: {ts_code} ({t_date})")
 
             time_module.sleep(SimConfig.API_REQUEST_INTERVAL)
 
@@ -319,7 +384,7 @@ class MockAccount:
         vol = (vol // 100) * 100
         if vol <= 0: return False
         cost = vol * price
-        
+
         actual_name = name if name else code
         display_name = f"{code}({actual_name})"
 
@@ -355,15 +420,22 @@ class SiriusStrictExecutor:
         # 【新增】列表以追踪交易和快照
         self.all_trades = []
         self.daily_snapshots = []
-        
+
     # 【新增】每日持仓快照功能
     def save_daily_snapshot(self, date_str):
         total_value = self.account.cash
-        day_snaps = [] 
+        day_snaps = []
 
         for code, pos in self.account.positions.items():
             df = MarketData.get_minute_data(code, date_str)
-            last_price = df.iloc[-1]['收盘'] if not df.empty else pos['avg_price']
+            #last_price = df.iloc[-1]['收盘'] if not df.empty else pos['avg_price']
+            if not df.empty:
+                last_price = df.iloc[-1]['收盘']
+            else:
+                last_price = pos.get('last_price', pos['avg_price'])
+            
+            pos['last_price'] = last_price
+
             market_value = pos['volume'] * last_price
             total_value += market_value
 
@@ -388,7 +460,7 @@ class SiriusStrictExecutor:
             'volume': 0, 'market_value': total_value, 'weight': 1.0
         })
         return total_value
-        
+
     # 【新增】导出 Excel 功能
     def export_to_excel(self):
         with pd.ExcelWriter(SimConfig.TRADE_RECORD_FILE, engine='openpyxl') as writer:
@@ -521,6 +593,8 @@ def run_strict_backtest():
             else:
                 model_dt = datetime.strptime(m_date, "%Y-%m-%d")
                 trade_date = (model_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+
+        # 👇【修复核心：这里少了一行赋值代码！】
         trade_map[trade_date] = m_date
 
     logger.info(f"交易日映射: {trade_map}")
@@ -543,6 +617,23 @@ def run_strict_backtest():
             targets, pf = MarketData.parse_sirius_model(json.load(f))
 
         pre_closes = {t['code']: t['ref_price'] for t in targets}
+
+        # === 修复1：过滤无行情数据交易日 ===
+        has_data = False
+        check_codes = set([t['code'] for t in targets]) | set(account.positions.keys())
+
+        for code in check_codes:
+            df = MarketData.get_minute_data(code, trade_date)
+            if not df.empty:
+                has_data = True
+                break
+
+        if not has_data:
+            logger.warning(f"{trade_date} 无行情数据，跳过交易，仅记录资产")
+            total_asset = executor.save_daily_snapshot(trade_date)
+            logger.info(f"交易日结束资产: {total_asset:.2f}")
+            continue
+
         executor.simulate_day(trade_date, targets, pf, pre_closes)
 
         # 【修改】使用统一的快照方法计算并记录当日资产情况
@@ -560,7 +651,7 @@ def run_strict_backtest():
         df = pd.DataFrame(executor.all_trades)
         buy_cnt = len(df[df['side'] == 'buy'])
         sell_cnt = len(df[df['side'] == 'sell'])
-        
+
         final_snap = [s for s in executor.daily_snapshots if s.get('code') == 'TOTAL']
         if final_snap:
             final_asset = final_snap[-1]['market_value']
@@ -605,7 +696,7 @@ class SimConfig:
     # 回测时间范围
     START_DATE = "2026-04-07"
     END_DATE = "2026-04-17"
-    INITIAL_CASH = 100000.0
+    INITIAL_CASH = 200000.0
     DEBUG = True
 
     # SIRIUS 策略参数
@@ -616,7 +707,7 @@ class SimConfig:
     BUY_THRESHOLD_PCT = -0.5         # 低于均线 X% 触发买入（负值）
     SELL_THRESHOLD_PCT = 0.5         # 高于均线 X% 触发卖出（正值）
     INTRADAY_SCAN_INTERVAL = 60      # 盘中扫描间隔（秒），在回测中对应分钟线频率
-    INTRADAY_COOLDOWN_SEC = 300      # 同一股票动态交易冷却时间（秒）
+    INTRADAY_COOLDOWN_SEC = 120         # 同一股票动态交易冷却时间（秒）
 
     # 尾盘强制卖出时间
     FORCE_SELL_HOUR = 14
@@ -644,7 +735,7 @@ class SimConfig:
 
     # 输出路径
     OUTPUT_DIR = "./backtest_results"
-    TRADE_RECORD_FILE = os.path.join(OUTPUT_DIR, "trade_records_dynamic.xlsx")
+    TRADE_RECORD_FILE = os.path.join(OUTPUT_DIR, f"trade_records_dynamic_{MODEL_NAME_PREFIX}.xlsx")
     DAILY_SNAPSHOT_FILE = os.path.join(OUTPUT_DIR, "daily_snapshots.xlsx")
 
 # 创建必要目录
@@ -740,7 +831,7 @@ class MarketData:
             logger.error(f"解析模型失败: {e}")
             return [], 1.0
 
-    
+
     @staticmethod
     def merge_monthly_data(year_month: str):
         """
@@ -764,7 +855,7 @@ class MarketData:
             try:
                 # 【修复核心 1】：强制指定 ts_code 和 trade_date 为字符串格式
                 temp_df = pd.read_csv(
-                    os.path.join(SimConfig.DATA_CACHE_DIR, f), 
+                    os.path.join(SimConfig.DATA_CACHE_DIR, f),
                     dtype={'ts_code': str, 'trade_date': str}
                 )
                 new_dfs.append(temp_df)
@@ -783,7 +874,7 @@ class MarketData:
                 # 【修复核心 2】：旧数据读出来后，强制转字符串并补齐 6 位，防止原本存的已经是 int
                 if 'ts_code' in old_df.columns:
                     old_df['ts_code'] = old_df['ts_code'].astype(str).str.zfill(6)
-                
+
                 # 将旧数据和新数据合并
                 combined_df = pd.concat([old_df, combined_df], ignore_index=True)
                 logger.info(f"正在合并旧数据 ({len(old_df)}条) 与新数据...")
@@ -795,7 +886,7 @@ class MarketData:
             # 【修复核心 3】：在合并、排序和保存前，再次做最终的类型兜底
             combined_df['ts_code'] = combined_df['ts_code'].astype(str).str.zfill(6)
             combined_df['trade_date'] = combined_df['trade_date'].astype(str)
-            
+
             # 以时间、代码、日期作为唯一键去重
             combined_df.drop_duplicates(subset=['时间', 'ts_code', 'trade_date'], inplace=True)
             # 排序，保证 Parquet 文件内部有序
@@ -1056,7 +1147,13 @@ class SiriusSimulator:
 
         for code, pos in self.account.positions.items():
             df = MarketData.get_minute_data(code, date_str)
-            last_price = df.iloc[-1]['收盘'] if not df.empty else pos['avg_price']
+            #last_price = df.iloc[-1]['收盘'] if not df.empty else pos['avg_price']                        
+            if not df.empty:
+                last_price = df.iloc[-1]['收盘']
+            else:
+                last_price = pos.get('last_price', pos['avg_price'])            
+            pos['last_price'] = last_price
+
             market_value = pos['volume'] * last_price
             total_value += market_value
 
@@ -1156,7 +1253,7 @@ class SiriusSimulator:
                                 'code': code, 'name': stk_name, 'side': 'sell',
                                 'volume': sell_vol, 'price': price, 'reason': "尾盘强制卖出"
                             })
-                break
+                continue
 
             # ---- 盘中动态交易扫描 ----
             if (now_ts - last_scan_ts) >= SimConfig.INTRADAY_SCAN_INTERVAL:
