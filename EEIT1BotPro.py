@@ -71,7 +71,7 @@ class Config:
     BUY_THRESHOLD_PCT = -0.5
     SELL_THRESHOLD_PCT = 0.5
     INTRADAY_SCAN_INTERVAL = 60
-    INTRADAY_COOLDOWN_SEC = 300     # 同一股票动态交易冷却时间（秒）
+    INTRADAY_COOLDOWN_SEC = 120     # 同一股票动态交易冷却时间（秒）
 
     #HTTP_PROXY = os.environ.get('HTTP_PROXY', '')
     #HTTPS_PROXY = os.environ.get('HTTPS_PROXY', '')
