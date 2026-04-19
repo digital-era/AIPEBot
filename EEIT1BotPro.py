@@ -53,9 +53,9 @@ class Config:
     POSITION_SNAPSHOT_PATH = os.path.join(LOG_DIR, "position_snapshots.xlsx")
 
     MARKET_OPEN = datetime.strptime("09:25", "%H:%M").time()
-    MARKET_CLOSE = datetime.strptime("23:30", "%H:%M").time()  # 可调整为 15:05 更安全
-    FORCE_SELL_HOUR = 23
-    FORCE_SELL_MINUTE = 50
+    MARKET_CLOSE = datetime.strptime("15:05", "%H:%M").time()  # 可调整为 15:05 更安全
+    FORCE_SELL_HOUR = 14
+    FORCE_SELL_MINUTE = 45
 
     ORDER_TIMEOUT = 10
     MAX_ORDER_VOLUME = 1000000
