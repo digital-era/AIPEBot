@@ -19,7 +19,7 @@ class SimConfig:
     TRADE_RATIO = 1
     BUY_REBOUND_RATIO = 0.0062
     SELL_DROP_RATIO = 0.0038
-    FORCE_DEADLINE_TIME = time(14, 50)
+    FORCE_DEADLINE_TIME = time(14, 45)
     FORCE_SELL_PRICE_RATIO = 0.995
 
     # 路径配置 (严格遵循参考样例)
@@ -718,6 +718,7 @@ if __name__ == "__main__":
     run_strict_backtest()
 
 
+
 # @title SIRIUS T1 BackTest Simulation (Dynamic Edition)
 
 #!/usr/bin/env python3
@@ -1271,7 +1272,6 @@ class SiriusSimulator:
         self.today_trades.clear()
 
         # 建立名称和参考价映射表，方便快速查找
-        # targets 里的 ref_price 即为交易日的“昨收价”
         target_info = {t['code']: {'name': t['name'], 'ref_price': t['ref_price']} for t in targets}
 
         # 1. 加载数据
@@ -1302,6 +1302,16 @@ class SiriusSimulator:
                 if vol > 0: target[t['code']] = vol
             return target
 
+        # ==================== 核心修复点开始 ====================
+        # 在开盘前一次性计算出当天的初始总资产，并锁定今天的目标买入股数
+        daily_start_asset = self.account.cash
+        for code, pos in self.account.positions.items():
+            price = initial_prices.get(code, pre_closes.get(code, pos['avg_price']))
+            daily_start_asset += pos['volume'] * price
+            
+        target_vols = compute_target_volumes(daily_start_asset)
+        # ==================== 核心修复点结束 ====================
+
         # 3. 分钟循环
         all_timestamps = set()
         for df in daily_data.values():
@@ -1314,14 +1324,7 @@ class SiriusSimulator:
             current_time = current_dt.time()
             now_ts = current_dt.timestamp()
 
-            # 计算当前实时总资产用于动态目标分配
-            current_total_asset = self.account.cash
-            for code, pos in self.account.positions.items():
-                df = daily_data.get(code)
-                price = df.loc[current_dt, '收盘'] if (df is not None and current_dt in df.index) else initial_prices.get(code, 0)
-                current_total_asset += pos['volume'] * price
-
-            target_vols = compute_target_volumes(current_total_asset)
+            # （此处的 target_vols 已固定，不再随盘中价格实时变动）
 
             # ---- 尾盘强制卖出 ----
             if current_time >= time(SimConfig.FORCE_SELL_HOUR, SimConfig.FORCE_SELL_MINUTE):
@@ -1329,7 +1332,6 @@ class SiriusSimulator:
                     target_vol = target_vols.get(code, 0)
                     if pos['volume'] > target_vol:
                         sell_vol = min(pos.get('can_sell', 0), pos['volume'] - target_vol)
-                        #if sell_vol < 100: continue
                         price = daily_data[code].loc[current_dt, '收盘']
                         stk_name = target_info.get(code, {}).get('name', code)
                         if self.account.order(date_str, current_time, code, 'sell', sell_vol, price, "强制卖出", stk_name):
@@ -1365,7 +1367,7 @@ class SiriusSimulator:
 
                     pos = self.account.positions.get(code, {'volume': 0, 'can_sell': 0})
 
-                    # 【新买入逻辑】：满足偏离度 且 实时价 <= refPrice * (1 + 容忍度)
+                    # 【买入逻辑】
                     if deviation <= SimConfig.BUY_THRESHOLD_PCT:
                         if real_price <= ref_price * (1 + SimConfig.PRICE_TOLERANCE):
                             buy_vol = (target_vol - pos['volume']) // 100 * 100
@@ -1378,13 +1380,9 @@ class SiriusSimulator:
                                         'volume': buy_vol, 'price': real_price, 'reason': f"动态买入(偏离{deviation:.1f}%)"
                                     })
                                     self.last_dynamic_trade_time[code] = now_ts
-                        else:
-                            # 即使偏离均线，但比昨收贵太多，不买
-                            pass
 
-                    # 【新卖出逻辑】：满足偏离度 且 实时价 >= refPrice * (1 - 容忍度)
+                    # 【卖出逻辑】
                     elif deviation >= SimConfig.SELL_THRESHOLD_PCT:
-                        # 这里的 ref_price 相当于“昨收价”
                         if real_price >= ref_price * (1 - SimConfig.PRICE_TOLERANCE):
                             excess = pos['volume'] - target_vol
                             sell_vol = min(pos['can_sell'], excess) // 100 * 100
