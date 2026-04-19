@@ -11,15 +11,15 @@ import random
 
 # ========================= 1. 配置 (对齐 SIRIUS & 基础设施) =========================
 class SimConfig:
-    START_DATE = "2026-04-01"
+    START_DATE = "2026-01-01"
     END_DATE = "2026-04-17"
     INITIAL_CASH = 100000.0
 
     # SIRIUS 策略逻辑
-    TRADE_RATIO = 0.5
+    TRADE_RATIO = 1
     BUY_REBOUND_RATIO = 0.0062
     SELL_DROP_RATIO = 0.0038
-    FORCE_DEADLINE_TIME = time(14, 50)
+    FORCE_DEADLINE_TIME = time(14, 45)
     FORCE_SELL_PRICE_RATIO = 0.995
 
     # 路径配置 (严格遵循参考样例)
@@ -192,7 +192,7 @@ class MarketData:
                 # 修复 ArrowTypeError: 强制将 "时间" 列转为标准的 datetime 对象
                 if '时间' in combined_df.columns:
                     combined_df['时间'] = pd.to_datetime(combined_df['时间'])
-                
+
                 # 强制统一 ts_code 和 trade_date 为纯正的字符串，杜绝混合类型
                 if 'ts_code' in combined_df.columns:
                     combined_df['ts_code'] = combined_df['ts_code'].astype(str).str.strip().str.zfill(6)
@@ -200,7 +200,7 @@ class MarketData:
                     combined_df['trade_date'] = pd.to_datetime(combined_df['trade_date'].astype(str)).dt.strftime('%Y-%m-%d')
 
                 # ========================================================
-            
+
             # 以时间、代码、日期作为唯一键去重
             combined_df.drop_duplicates(subset=['时间', 'ts_code', 'trade_date'], inplace=True)
             # 排序，保证 Parquet 文件内部有序
@@ -346,17 +346,15 @@ class MarketData:
                     # 【核心修复】：统一格式化
                     df_p['trade_date'] = pd.to_datetime(df_p['trade_date'].astype(str)).dt.strftime('%Y-%m-%d')
                     df_p['ts_code'] = df_p['ts_code'].astype(str).str.strip().str.zfill(6)
-                    
-                    parquet_keys_set.update(set(zip(df_p['ts_code'], df_p['trade_date'])))
+
+                    parquet_keys_set.update( (str(c).strip().zfill(6),pd.to_datetime(d).strftime('%Y-%m-%d'))for c, d in zip(df_p['ts_code'], df_p['trade_date']))
                     logger.info(f"已加载 {ym} 历史数据，共 {len(df_p)} 条记录")
-                    
+
                 except Exception as e:
                     logger.error(f"读取 Parquet 异常 {p_path}: {e}")
 
-
-        print(raw_pairs)
-        print("raw_pairs")
-
+        logger.info("raw_pairs")
+        logger.info(raw_pairs)
 
         last_month = None
         for ts_code, t_date in raw_pairs:
@@ -389,6 +387,18 @@ class MarketData:
 
         if last_month:
             MarketData.merge_monthly_data(last_month)
+
+        missing = []
+        for ts_code, t_date in raw_pairs:
+           if t_date not in dates:
+              continue
+           df = MarketData.get_minute_data(ts_code, t_date)
+           if df.empty:
+              missing.append((ts_code, t_date))
+
+        if missing:
+           logger.error(f"❌ 缺失数据: {len(missing)} 条")
+           logger.error(missing[:20])
 
 # ========================= 4. 账户 & 执行器 (SIRIUS 核心) =========================
 class MockAccount:
@@ -521,7 +531,7 @@ class SiriusStrictExecutor:
         for code, pos in list(self.account.positions.items()):
             t_vol = target_vols.get(code, 0)
             if pos['volume'] > t_vol:
-                sell_vol = pos['can_sell']
+                sell_vol = min(pos['can_sell'], pos['volume'] - t_vol)
                 if sell_vol > 0:
                     real_p = prices_1000.get(code)
                     pre_close = pre_closes.get(code, pos['avg_price'])
@@ -566,23 +576,47 @@ class SiriusStrictExecutor:
                 prices_1450[code] = df.loc[mask, '收盘'].iloc[0] if mask.any() else df.iloc[-1]['收盘']
 
         for code, pos in list(self.account.positions.items()):
-            t_vol = target_vols.get(code, 0)
-            if pos['volume'] > t_vol:
-                sell_needed = pos['volume'] - t_vol
-                actual_sell = min(pos.get('can_sell', 0), sell_needed)
+            can_sell = pos.get('can_sell', 0)
+            if can_sell <= 0:
+                continue
 
-                if actual_sell > 0:
-                    real_p = prices_1450.get(code)
-                    if real_p:
-                        exec_p = real_p
-                        stk_name = name_map.get(code, code)
-                        if self.account.order(date_str, trade_time_close, code, 'sell', actual_sell, exec_p, "尾盘强制", stk_name):
-                             # 【新增】记录交易
-                             self.all_trades.append({
-                                'date': date_str, 'time': trade_time_close.strftime('%H:%M'),
-                                'code': code, 'name': stk_name, 'side': 'sell',
-                                'volume': actual_sell, 'price': exec_p, 'reason': "尾盘强制"
-                            })
+            t_vol = target_vols.get(code, 0)
+
+            # === 情况1：不在目标池 → 全清 ===
+            if code not in target_vols:
+                actual_sell = can_sell
+
+            # === 情况2：在目标池但超仓 → 卖差额 ===
+            elif pos['volume'] > t_vol:
+                sell_needed = pos['volume'] - t_vol
+                actual_sell = min(can_sell, sell_needed)
+
+            # === 情况3：不用卖 ===
+            else:
+                actual_sell = 0
+
+            if actual_sell <= 0:
+                continue
+
+            real_p = prices_1450.get(code)
+            if not real_p:
+                continue
+
+            exec_p = real_p
+            stk_name = name_map.get(code, code)
+
+            if self.account.order(date_str, trade_time_close, code, 'sell',
+                                  actual_sell, exec_p, "尾盘强制", stk_name):
+                self.all_trades.append({
+                    'date': date_str,
+                    'time': trade_time_close.strftime('%H:%M'),
+                    'code': code,
+                    'name': stk_name,
+                    'side': 'sell',
+                    'volume': actual_sell,
+                    'price': exec_p,
+                    'reason': "尾盘强制"
+                })
 
 # ========================= 回测主函数 =========================
 def run_strict_backtest():
