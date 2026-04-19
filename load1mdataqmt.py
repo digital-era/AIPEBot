@@ -34,18 +34,13 @@ except ImportError:
     logger.warning("miniQMT 未安装或无法导入，preload_from_miniqmt 将不可用")
 
 # ========================= 1. 配置 =========================
-START_DATE = "2026-03-02"
-END_DATE = "2026-03-03"
+START_DATE = "2026-01-29"
+END_DATE = "2026-02-28"
 
 MODEL_HISTORY_DIR = "./historical_models"      # 统一变量名
 MONTHLY_DIR = "./monthly_data"
 MODEL_NAME_PREFIX = "流入模型"
 DATA_CACHE_DIR = "./min_data_cache"
-API_BASE_URL = "https://query.aivibeinvestment.com/api/query"
-API_REQUEST_INTERVAL = 0.3
-MAX_RETRIES = 5
-EXPONENTIAL_BACKOFF_BASE = 2
-FILL_OHLC_WITH_PRICE = True
 
 # 代理配置
 HTTP_PROXY = 'http://127.0.0.1:7890'
@@ -292,114 +287,6 @@ class MarketData:
             except Exception as e:
                 pass
         return pd.DataFrame()
-
-    @staticmethod
-    def _fetch_intraday_from_api(code: str, date_str: str) -> pd.DataFrame:
-        api_url = f"{API_BASE_URL.rstrip('/')}?type=specifiedIntraday&code={code}&date={date_str}"
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                resp = requests.get(api_url, timeout=30)   # 添加代理
-                if resp.status_code == 404:
-                    return pd.DataFrame()
-                resp.raise_for_status()
-                data = resp.json()
-                if not data:
-                    continue
-                if isinstance(data, dict):
-                    data = data.get("data") or data.get("trends")
-
-                df = pd.DataFrame(data)
-                if df.empty:
-                    return pd.DataFrame()
-
-                df["时间"] = pd.to_datetime(df["date"] + " " + df["time"])
-                df["收盘"] = df.get("price", df.get("close", 0.0))
-                df["开盘"] = df.get("open", df["收盘"])
-                df["最高"] = df.get("high", df["收盘"])
-                df["最低"] = df.get("low", df["收盘"])
-                df["成交量"] = df.get("volume", df.get("vol", 0.0))
-                return df[["时间", "开盘", "收盘", "最高", "最低", "成交量"]].sort_values("时间")
-            except Exception as e:
-                time_module.sleep(EXPONENTIAL_BACKOFF_BASE ** attempt)
-        return pd.DataFrame()
-
-    @staticmethod
-    def preload_from_models(start_date: str, end_date: str):
-        """通过 HTTP API 预加载分钟数据（原 preload_from_models 逻辑）"""
-        # 清空缓存目录
-        if os.path.exists(DATA_CACHE_DIR):
-            shutil.rmtree(DATA_CACHE_DIR)
-        os.makedirs(DATA_CACHE_DIR, exist_ok=True)
-
-        dates = MarketData.get_model_dates(start_date, end_date)
-        if not dates:
-            logger.warning("未找到模型文件，无法预加载")
-            return
-        date_map = MarketData.build_date_map(dates)
-        today_str = MarketData._get_current_cn_date()
-
-        # 收集所有需要下载的 (股票代码, 日期)
-        raw_pairs = set()
-        for m_date in dates:
-            t1, t2 = date_map[m_date]
-            model_file = os.path.join(MODEL_HISTORY_DIR, f"{MODEL_NAME_PREFIX}_{m_date}.json")
-            if not os.path.exists(model_file):
-                continue
-            with open(model_file, 'r', encoding='utf-8') as f:
-                targets, _ = MarketData.parse_sirius_model(json.load(f))
-                for t in targets:
-                    code = MarketData._convert_code(t['code'])
-                    if t1 <= today_str:
-                        raw_pairs.add((code, t1))
-                    if t2 <= today_str:
-                        raw_pairs.add((code, t2))
-
-        # 按月份分组
-        monthly_pairs: dict[str, List[Tuple[str, str]]] = {}
-        for code, date in raw_pairs:
-            ym = date[:7]
-            monthly_pairs.setdefault(ym, []).append((code, date))
-
-        # 检查已存在的 Parquet 数据，避免重复下载
-        for ym in list(monthly_pairs.keys()):
-            p_path = MarketData.get_monthly_file_path(ym, qmt_suffix=False)
-            existing_keys = set()
-            if os.path.exists(p_path):
-                try:
-                    existing_df = pd.read_parquet(p_path, columns=['ts_code', 'trade_date'])
-                    existing_df['trade_date'] = pd.to_datetime(existing_df['trade_date']).dt.strftime('%Y-%m-%d')
-                    existing_df['ts_code'] = existing_df['ts_code'].astype(str)
-                    existing_keys = set(zip(existing_df['ts_code'], existing_df['trade_date']))
-                except Exception as e:
-                    logger.warning(f"读取已有 parquet 失败 {p_path}: {e}")
-            remaining = [(c, d) for (c, d) in monthly_pairs[ym] if (c, d) not in existing_keys]
-            if remaining:
-                monthly_pairs[ym] = remaining
-            else:
-                del monthly_pairs[ym]
-
-        if not monthly_pairs:
-            logger.info("所有数据已存在，无需下载")
-            return
-
-        # 逐月下载并合并
-        for ym, pairs in monthly_pairs.items():
-            logger.info(f"开始处理月份 {ym}，共 {len(pairs)} 条待下载记录")
-            for idx, (code, date) in enumerate(pairs):
-                csv_path = os.path.join(DATA_CACHE_DIR, f"{code}_{date}.csv")
-                if os.path.exists(csv_path):
-                    continue
-                df = MarketData._fetch_intraday_from_api(code, date)
-                if not df.empty:
-                    df["ts_code"] = code
-                    df["trade_date"] = date
-                    standard_columns = ['时间', '开盘', '收盘', '最高', '最低', '成交量', 'ts_code', 'trade_date']
-                    df = df[standard_columns]
-                    df.to_csv(csv_path, index=False)
-                time_module.sleep(API_REQUEST_INTERVAL)
-            # 合并该月份的 CSV 到 Parquet
-            MarketData.merge_monthly_data(ym, qmt_suffix=False)
-        logger.info("HTTP API 数据预加载完成")
 
     # ==================== miniQMT 相关方法（修复缩进后移至类内平级） ====================
     @staticmethod
@@ -655,10 +542,7 @@ def run_download():
     #ModelDownloader.download_models_for_date_range(START_DATE, END_DATE, force=False)
     #logger.info("模型数据下载完成，退出")
     
-    # 然后通过 HTTP API 预加载分钟数据
-    #MarketData.preload_from_models(START_DATE, END_DATE)
-    
-    # 如果 miniQMT 可用，也通过它预加载一份（可选）
+    # 如果 miniQMT 可用，通过它预加载1分钟数据
     if MINIQMT_AVAILABLE:
         MarketData.preload_from_miniqmt(START_DATE, END_DATE)
     logger.info("Market数据下载完成，退出")
