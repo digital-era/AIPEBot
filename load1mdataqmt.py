@@ -136,6 +136,13 @@ class MarketData:
             return os.path.join(MONTHLY_DIR, f"minute_data_{year_month}_qmt.parquet")
         else:
             return os.path.join(MONTHLY_DIR, f"minute_data_{year_month}.parquet")
+    
+    @staticmethod
+    def get_daily_file_path(qmt_suffix: bool = False) -> str:
+        if qmt_suffix:
+            return os.path.join(MONTHLY_DIR, "daily_data_qmt.parquet")
+        else:
+            return os.path.join(MONTHLY_DIR, "daily_data.parquet")
 
     @staticmethod
     def build_date_map(all_model_dates: list) -> dict:
@@ -164,12 +171,6 @@ class MarketData:
         dates.sort()
         return dates
 
-    @staticmethod
-    def get_daily_file_path(year_month: str, qmt_suffix: bool = False) -> str:
-        if qmt_suffix:
-            return os.path.join(MONTHLY_DIR, f"daily_data_{year_month}_qmt.parquet")
-        else:
-            return os.path.join(MONTHLY_DIR, f"daily_data_{year_month}.parquet")
 
     @staticmethod
     def parse_sirius_model(model_data: dict) -> tuple:
@@ -629,7 +630,7 @@ class MarketData:
 
     @staticmethod
     def preload_daily_from_miniqmt(start_date: str, end_date: str):
-        """预加载日线数据"""
+        """预加载日线数据（单文件模式 + 增量更新）"""
     
         if not MINIQMT_AVAILABLE:
             logger.error("miniQMT 未就绪")
@@ -637,11 +638,15 @@ class MarketData:
     
         dates = MarketData.get_model_dates(start_date, end_date)
         if not dates:
+            logger.warning("未找到模型日期")
             return
     
         date_map = MarketData.build_date_map(dates)
         today_str = MarketData._get_current_cn_date()
     
+        # =========================
+        # Step1: 收集下载任务
+        # =========================
         raw_pairs = set()
     
         for m_date in dates:
@@ -662,49 +667,84 @@ class MarketData:
                     if t2 <= today_str:
                         raw_pairs.add((code, t2))
     
-        # 按月份分组
-        monthly_pairs = {}
-        for code, date in raw_pairs:
-            ym = date[:7]
-            monthly_pairs.setdefault(ym, []).append((code, date))
+        if not raw_pairs:
+            logger.warning("无日线任务")
+            return
     
-        for ym, pairs in monthly_pairs.items():
-            logger.info(f"[日线] 处理 {ym} 共 {len(pairs)} 条")
+        logger.info(f"[日线] 原始任务数: {len(raw_pairs)}")
     
-            new_dfs = []
+        # =========================
+        # Step2: 过滤已有数据（核心优化）
+        # =========================
+        p_path = MarketData.get_daily_file_path(qmt_suffix=True)
     
-            for code, date in pairs:
-                df = MarketData._fetch_miniqmt_daily(code, date)
+        existing_keys = set()
     
-                if not df.empty:
-                    df['ts_code'] = code
-                    df['trade_date'] = date
-                    df = df[['时间', '开盘', '收盘', '最高', '最低', '成交量', 'ts_code', 'trade_date']]
-                    new_dfs.append(df)
+        if os.path.exists(p_path):
+            try:
+                old_df = pd.read_parquet(p_path, columns=['ts_code', 'trade_date'])
+                old_df['ts_code'] = old_df['ts_code'].astype(str)
+                old_df['trade_date'] = old_df['trade_date'].astype(str)
+                existing_keys = set(zip(old_df['ts_code'], old_df['trade_date']))
+            except Exception as e:
+                logger.warning(f"读取已有日线失败: {e}")
     
-            if not new_dfs:
-                continue
+        # 过滤掉已存在的
+        raw_pairs = [p for p in raw_pairs if p not in existing_keys]
     
-            combined = pd.concat(new_dfs, ignore_index=True)
+        if not raw_pairs:
+            logger.info("[日线] 数据已全部存在，无需下载")
+            return
     
-            combined['ts_code'] = combined['ts_code'].astype(str).str.zfill(6)
-            combined['trade_date'] = combined['trade_date'].astype(str)
+        logger.info(f"[日线] 实际下载任务数: {len(raw_pairs)}")
     
-            p_path = MarketData.get_daily_file_path(ym, qmt_suffix=True)
+        # =========================
+        # Step3: 下载数据
+        # =========================
+        new_dfs = []
     
-            if os.path.exists(p_path):
-                try:
-                    old = pd.read_parquet(p_path)
-                    combined = pd.concat([old, combined], ignore_index=True)
-                except:
-                    pass
+        for idx, (code, date) in enumerate(raw_pairs):
+            logger.debug(f"[日线] 下载 {idx+1}/{len(raw_pairs)}: {code} {date}")
     
-            combined.drop_duplicates(subset=['时间', 'ts_code', 'trade_date'], inplace=True)
-            combined.sort_values(['ts_code', '时间'], inplace=True)
+            df = MarketData._fetch_miniqmt_daily(code, date)
     
-            combined.to_parquet(p_path, index=False, engine='pyarrow')
+            if not df.empty:
+                df['ts_code'] = str(code).zfill(6)
+                df['trade_date'] = str(date)
+                df = df[['时间', '开盘', '收盘', '最高', '最低', '成交量', 'ts_code', 'trade_date']]
+                new_dfs.append(df)
     
-            logger.info(f"[日线] 已保存 {p_path} 行数:{len(combined)}")
+        if not new_dfs:
+            logger.warning("[日线] 下载结果为空")
+            return
+    
+        combined = pd.concat(new_dfs, ignore_index=True)
+    
+        # =========================
+        # Step4: 合并旧数据
+        # =========================
+        if os.path.exists(p_path):
+            try:
+                old_df = pd.read_parquet(p_path)
+                old_df['ts_code'] = old_df['ts_code'].astype(str).str.zfill(6)
+                old_df['trade_date'] = old_df['trade_date'].astype(str)
+    
+                combined = pd.concat([old_df, combined], ignore_index=True)
+            except Exception as e:
+                logger.warning(f"合并旧数据失败: {e}")
+    
+        # =========================
+        # Step5: 去重 + 排序
+        # =========================
+        combined.drop_duplicates(subset=['时间', 'ts_code', 'trade_date'], inplace=True)
+        combined.sort_values(['ts_code', '时间'], inplace=True)
+    
+        # =========================
+        # Step6: 保存
+        # =========================
+        combined.to_parquet(p_path, index=False, engine='pyarrow')
+    
+        logger.info(f"[日线] 更新完成: {p_path} 总行数:{len(combined)}")
 
 # ========================= 回测主函数 =========================
 def run_download():
