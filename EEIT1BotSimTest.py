@@ -12,7 +12,7 @@ import random
 # ========================= 1. 配置 (对齐 SIRIUS & 基础设施) =========================
 class SimConfig:
     START_DATE = "2025-09-12"
-    END_DATE = "2026-04-17"
+    END_DATE = "2026-04-20"
     INITIAL_CASH = 100000.0
 
     # SIRIUS 策略逻辑
@@ -26,7 +26,7 @@ class SimConfig:
     MODEL_HISTORY_DIR = "./historical_models"
     DATA_CACHE_DIR = "./min_data_cache"
     MONTHLY_DIR = "./monthly_data"
-    MODEL_NAME_PREFIX = "流入模型"
+    MODEL_NAME_PREFIX = f"{TARGET_MODE_NAME}"
 
     API_BASE_URL = "https://query.aivibeinvestment.com/api/query"
     API_REQUEST_INTERVAL = 0.3
@@ -67,7 +67,7 @@ class MarketData:
 
     @staticmethod
     def get_monthly_file_path(year_month: str) -> str:
-        return os.path.join(SimConfig.MONTHLY_DIR, f"minute_data_{year_month}.parquet")
+        return os.path.join(SimConfig.MONTHLY_DIR, f"minute_data_{year_month}_qmt.parquet")
 
     @staticmethod
     def get_limit_prices(pre_close: float) -> tuple:
@@ -411,7 +411,7 @@ class MarketData:
         if cls._daily_df is not None:
             return cls._daily_df
 
-        daily_path = os.path.join(SimConfig.MONTHLY_DIR, "daily_data.parquet")
+        daily_path = os.path.join(SimConfig.MONTHLY_DIR, "daily_data_qmt.parquet")
         if not os.path.exists(daily_path):
             logger.warning(f"日线数据文件不存在: {daily_path}")
             cls._daily_df = pd.DataFrame()
@@ -803,7 +803,6 @@ if __name__ == "__main__":
     run_strict_backtest()
 
 
-
 # @title SIRIUS T1 BackTest Simulation (Dynamic Edition)
 
 #!/usr/bin/env python3
@@ -834,7 +833,7 @@ from typing import Dict, List, Optional, Tuple
 class SimConfig:
     # 回测时间范围
     START_DATE = "2025-09-12"
-    END_DATE = "2026-04-17"
+    END_DATE = "2026-04-20"
     INITIAL_CASH = 100000.0
     DEBUG = True
 
@@ -856,7 +855,7 @@ class SimConfig:
     MODEL_HISTORY_DIR = "./historical_models"
     DATA_CACHE_DIR = "./min_data_cache"
     MONTHLY_DIR = "./monthly_data"
-    MODEL_NAME_PREFIX = "流入模型"
+    MODEL_NAME_PREFIX = f"{TARGET_MODE_NAME}" 
 
     # 数据获取 API（用于预下载）
     API_BASE_URL = "https://query.aivibeinvestment.com/api/query"
@@ -904,7 +903,7 @@ class MarketData:
 
     @staticmethod
     def get_monthly_file_path(year_month: str) -> str:
-        return os.path.join(SimConfig.MONTHLY_DIR, f"minute_data_{year_month}.parquet")
+        return os.path.join(SimConfig.MONTHLY_DIR, f"minute_data_{year_month}_qmt.parquet")
 
     @staticmethod
     def get_limit_prices(pre_close: float) -> tuple:
@@ -1248,7 +1247,7 @@ class MarketData:
         if cls._daily_df is not None:
             return cls._daily_df
 
-        daily_path = os.path.join(SimConfig.MONTHLY_DIR, "daily_data.parquet")
+        daily_path = os.path.join(SimConfig.MONTHLY_DIR, "daily_data_qmt.parquet")
         if not os.path.exists(daily_path):
             logger.warning(f"日线数据文件不存在: {daily_path}")
             cls._daily_df = pd.DataFrame()
