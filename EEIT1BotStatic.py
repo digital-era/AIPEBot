@@ -1109,7 +1109,7 @@ if __name__ == "__main__":
                     bot.after_close()
                     bot._snapshot_done = True
 
-                if bot.last_force_sell_date != today:
+                if bot.last_force_sell_date != today_str:
                     bot._snapshot_done = False
             except Exception as e:
                 logger.error(f"守护模式异常: {e}", exc_info=True)
