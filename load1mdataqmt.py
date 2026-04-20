@@ -507,7 +507,20 @@ class MarketData:
             })
     
             # 时间处理（关键：转中国时间 + 归一到日期）
-            df['时间'] = pd.to_datetime(df['时间'], errors='coerce')
+            raw_time = df['时间']
+            try:
+                if raw_time.dtype in ['int64', 'float64']:
+                    length = raw_time.astype(str).str.len().iloc[0]
+            
+                    if length >= 13:
+                        df['时间'] = pd.to_datetime(raw_time, unit='ms', errors='coerce')
+                    else:
+                        df['时间'] = pd.to_datetime(raw_time, unit='s', errors='coerce')
+                else:
+                    df['时间'] = pd.to_datetime(raw_time, errors='coerce')
+            except Exception as e:
+                logger.warning(f"日线时间解析异常 {code} {date_str}: {e}")
+                return pd.DataFrame()
     
             # ⭐ 同样加8小时（与你分钟数据保持一致）
             df['时间'] = df['时间'] + pd.Timedelta(hours=8)
