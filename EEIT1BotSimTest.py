@@ -11,7 +11,7 @@ import random
 
 # ========================= 1. 配置 (对齐 SIRIUS & 基础设施) =========================
 class SimConfig:
-    START_DATE = "2026-01-01"
+    START_DATE = "2025-09-12"
     END_DATE = "2026-04-17"
     INITIAL_CASH = 100000.0
 
@@ -400,6 +400,80 @@ class MarketData:
            logger.error(f"❌ 缺失数据: {len(missing)} 条")
            logger.error(missing[:20])
 
+
+
+    _daily_df = None
+    _trading_dates_cache = {}
+
+    @classmethod
+    def _load_daily_data(cls):
+        """加载 daily_data.parquet 并缓存"""
+        if cls._daily_df is not None:
+            return cls._daily_df
+
+        daily_path = os.path.join(SimConfig.MONTHLY_DIR, "daily_data.parquet")
+        if not os.path.exists(daily_path):
+            logger.warning(f"日线数据文件不存在: {daily_path}")
+            cls._daily_df = pd.DataFrame()
+        else:
+            df = pd.read_parquet(daily_path)
+            # 统一格式化代码和日期
+            if 'ts_code' in df.columns:
+                df['ts_code'] = df['ts_code'].astype(str).str.strip().str.zfill(6)
+            if 'trade_date' in df.columns:
+                df['trade_date'] = pd.to_datetime(df['trade_date']).dt.strftime('%Y-%m-%d')
+            cls._daily_df = df
+        return cls._daily_df
+
+    @classmethod
+    def _get_trading_dates(cls, code: str) -> list:
+        """基于日线数据获取该股票的所有交易日（升序）"""
+        if code in cls._trading_dates_cache:
+            return cls._trading_dates_cache[code]
+
+        df = cls._load_daily_data()
+        if df.empty:
+            return []
+
+        dates = df[df['ts_code'] == code]['trade_date'].unique().tolist()
+        dates.sort()
+        cls._trading_dates_cache[code] = dates
+        return dates
+
+    @classmethod
+    def get_prev_trading_date(cls, code: str, current_date: str) -> str | None:
+        """返回 current_date 之前最近的一个交易日"""
+        dates = cls._get_trading_dates(code)
+        if not dates:
+            return None
+        try:
+            idx = dates.index(current_date)
+            return dates[idx - 1] if idx > 0 else None
+        except ValueError:
+            # current_date 不在列表中（如停牌日），取第一个小于 current_date 的日期
+            prev = [d for d in dates if d < current_date]
+            return prev[-1] if prev else None
+
+    @classmethod
+    def get_prev_close(cls, code: str, trade_date: str) -> float | None:
+        """
+        从日线数据获取前一交易日的官方收盘价。
+        若无法获取，返回 None。
+        """
+        prev_date = cls.get_prev_trading_date(code, trade_date)
+        if prev_date is None:
+            return None
+
+        df = cls._load_daily_data()
+        if df.empty:
+            return None
+
+        mask = (df['ts_code'] == code) & (df['trade_date'] == prev_date)
+        row = df.loc[mask, '收盘']
+        if not row.empty:
+            return float(row.iloc[0])
+        return None
+
 # ========================= 4. 账户 & 执行器 (SIRIUS 核心) =========================
 class MockAccount:
     def __init__(self, initial_cash):
@@ -505,7 +579,7 @@ class SiriusStrictExecutor:
                 df_snap.to_excel(writer, sheet_name='持仓快照', index=False)
                 logger.info(f"导出持仓快照: {len(df_snap)} 条")
 
-    def simulate_day(self, date_str, targets, pos_factor, pre_closes):
+    def simulate_day(self, date_str, targets, pos_factor, pre_closes_ignored=None):
         self.account.start_day()
         trade_time_morning = time(9, 30)
 
@@ -527,6 +601,17 @@ class SiriusStrictExecutor:
         effective_asset = total_asset * SimConfig.TRADE_RATIO * pos_factor
         target_vols = {t['code']: int(effective_asset * t['weight'] / t['ref_price'] / 100) * 100 for t in targets}
 
+        # ========== 修正：为所有持仓股票获取真实昨日收盘价 ==========
+        real_prev_closes = {}
+        for code in self.account.positions.keys():
+            prev_close = MarketData.get_prev_close(code, date_str)
+            if prev_close is not None:
+                real_prev_closes[code] = prev_close
+            else:
+                # 兜底：无前收盘数据，使用成本价（并给出警告）
+                real_prev_closes[code] = self.account.positions[code]['avg_price']
+                logger.warning(f"{date_str} {code} 无前收盘价，使用成本价作为卖出参考")
+
         # A. 卖出指令
         for code, pos in list(self.account.positions.items()):
             t_vol = target_vols.get(code, 0)
@@ -534,7 +619,7 @@ class SiriusStrictExecutor:
                 sell_vol = min(pos['can_sell'], pos['volume'] - t_vol)
                 if sell_vol > 0:
                     real_p = prices_1000.get(code)
-                    pre_close = pre_closes.get(code, pos['avg_price'])
+                    pre_close = real_prev_closes.get(code)
                     if real_p and real_p >= pre_close:
                         stk_name = name_map.get(code, code)
                         if self.account.order(date_str, trade_time_morning, code, 'sell', sell_vol, real_p, "早盘止盈", stk_name):
@@ -748,7 +833,7 @@ from typing import Dict, List, Optional, Tuple
 # ========================= 1. 配置 (SIRIUS 回测专用) =========================
 class SimConfig:
     # 回测时间范围
-    START_DATE = "2026-01-01"
+    START_DATE = "2025-09-12"
     END_DATE = "2026-04-17"
     INITIAL_CASH = 100000.0
     DEBUG = True
@@ -1143,7 +1228,7 @@ class MarketData:
             MarketData.merge_monthly_data(last_month)
 
         missing = []
-        for ts_code, t_date in raw_pairs:          
+        for ts_code, t_date in raw_pairs:
            if t_date not in dates:
               continue
            df = MarketData.get_minute_data(ts_code, t_date)
@@ -1153,6 +1238,78 @@ class MarketData:
         if missing:
            logger.error(f"❌ 缺失数据: {len(missing)} 条")
            logger.error(missing[:20])
+
+    _daily_df = None
+    _trading_dates_cache = {}
+
+    @classmethod
+    def _load_daily_data(cls):
+        """加载 daily_data.parquet 并缓存"""
+        if cls._daily_df is not None:
+            return cls._daily_df
+
+        daily_path = os.path.join(SimConfig.MONTHLY_DIR, "daily_data.parquet")
+        if not os.path.exists(daily_path):
+            logger.warning(f"日线数据文件不存在: {daily_path}")
+            cls._daily_df = pd.DataFrame()
+        else:
+            df = pd.read_parquet(daily_path)
+            # 统一格式化代码和日期
+            if 'ts_code' in df.columns:
+                df['ts_code'] = df['ts_code'].astype(str).str.strip().str.zfill(6)
+            if 'trade_date' in df.columns:
+                df['trade_date'] = pd.to_datetime(df['trade_date']).dt.strftime('%Y-%m-%d')
+            cls._daily_df = df
+        return cls._daily_df
+
+    @classmethod
+    def _get_trading_dates(cls, code: str) -> list:
+        """基于日线数据获取该股票的所有交易日（升序）"""
+        if code in cls._trading_dates_cache:
+            return cls._trading_dates_cache[code]
+
+        df = cls._load_daily_data()
+        if df.empty:
+            return []
+
+        dates = df[df['ts_code'] == code]['trade_date'].unique().tolist()
+        dates.sort()
+        cls._trading_dates_cache[code] = dates
+        return dates
+
+    @classmethod
+    def get_prev_trading_date(cls, code: str, current_date: str) -> str | None:
+        """返回 current_date 之前最近的一个交易日"""
+        dates = cls._get_trading_dates(code)
+        if not dates:
+            return None
+        try:
+            idx = dates.index(current_date)
+            return dates[idx - 1] if idx > 0 else None
+        except ValueError:
+            # current_date 不在列表中（如停牌日），取第一个小于 current_date 的日期
+            prev = [d for d in dates if d < current_date]
+            return prev[-1] if prev else None
+
+    @classmethod
+    def get_prev_close(cls, code: str, trade_date: str) -> float | None:
+        """
+        从日线数据获取前一交易日的官方收盘价。
+        若无法获取，返回 None。
+        """
+        prev_date = cls.get_prev_trading_date(code, trade_date)
+        if prev_date is None:
+            return None
+
+        df = cls._load_daily_data()
+        if df.empty:
+            return None
+
+        mask = (df['ts_code'] == code) & (df['trade_date'] == prev_date)
+        row = df.loc[mask, '收盘']
+        if not row.empty:
+            return float(row.iloc[0])
+        return None
 
 # ========================= 4. 模拟账户 (修正名称存储) =========================
 class MockAccount:
@@ -1266,7 +1423,7 @@ class SiriusSimulator:
         })
         return total_value
 
-    def simulate_day(self, date_str: str, targets: List[Dict], position_factor: float, pre_closes: Dict):
+    def simulate_day(self, date_str: str, targets: List[Dict], position_factor: float, pre_closes_ignored: Dict):
         """盘中动态交易 + 限制条件"""
         self.account.start_day()
         self.today_trades.clear()
@@ -1283,14 +1440,26 @@ class SiriusSimulator:
                 df = df.set_index('时间')
                 daily_data[code] = df
 
+
+        # ========== 修正：为所有持仓股票获取真实昨日收盘价 ==========
+        real_prev_closes = {}
+        for code in self.account.positions.keys():
+            prev_close = MarketData.get_prev_close(code, date_str)
+            if prev_close is not None:
+                real_prev_closes[code] = prev_close
+            else:
+                # 兜底：无前收盘数据，使用成本价（并给出警告）
+                real_prev_closes[code] = self.account.positions[code]['avg_price']
+                logger.warning(f"{date_str} {code} 无前收盘价，使用成本价作为卖出参考")
+
         # 2. 计算基准资产和目标股数
         dt_start = datetime.combine(datetime.strptime(date_str, "%Y-%m-%d").date(), time(9, 31))
-
+        
         # 初始定价逻辑
         initial_prices = {}
         for code, df in daily_data.items():
             mask = df.index >= dt_start
-            initial_prices[code] = df[mask]['收盘'].iloc[0] if mask.any() else pre_closes.get(code, 0)
+            initial_prices[code] = df[mask]['收盘'].iloc[0] if mask.any() else real_prev_closes.get(code, 0)
 
         def compute_target_volumes(current_asset):
             risk_asset = current_asset * SimConfig.TRADE_RATIO * position_factor
@@ -1306,9 +1475,9 @@ class SiriusSimulator:
         # 在开盘前一次性计算出当天的初始总资产，并锁定今天的目标买入股数
         daily_start_asset = self.account.cash
         for code, pos in self.account.positions.items():
-            price = initial_prices.get(code, pre_closes.get(code, pos['avg_price']))
+            price = initial_prices.get(code, real_prev_closes.get(code, pos['avg_price']))
             daily_start_asset += pos['volume'] * price
-            
+
         target_vols = compute_target_volumes(daily_start_asset)
         # ==================== 核心修复点结束 ====================
 
@@ -1365,7 +1534,7 @@ class SiriusSimulator:
                     if now_ts - self.last_dynamic_trade_time.get(code, 0) < SimConfig.INTRADAY_COOLDOWN_SEC:
                         continue
 
-                    pos = self.account.positions.get(code, {'volume': 0, 'can_sell': 0})
+                    pos = self.account.positions.get(code, {'volume': 0, 'can_sell': 0, 'avg_price': 0.0})
 
                     # 【买入逻辑】
                     if deviation <= SimConfig.BUY_THRESHOLD_PCT:
@@ -1383,7 +1552,7 @@ class SiriusSimulator:
 
                     # 【卖出逻辑】
                     elif deviation >= SimConfig.SELL_THRESHOLD_PCT:
-                        if real_price >= ref_price * (1 - SimConfig.PRICE_TOLERANCE):
+                        if real_price >= real_prev_closes.get(code, pos['avg_price']) * (1 - SimConfig.PRICE_TOLERANCE):
                             excess = pos['volume'] - target_vol
                             sell_vol = min(pos['can_sell'], excess) // 100 * 100
                             if sell_vol >= 100:
