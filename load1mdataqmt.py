@@ -165,6 +165,13 @@ class MarketData:
         return dates
 
     @staticmethod
+    def get_daily_file_path(year_month: str, qmt_suffix: bool = False) -> str:
+        if qmt_suffix:
+            return os.path.join(MONTHLY_DIR, f"daily_data_{year_month}_qmt.parquet")
+        else:
+            return os.path.join(MONTHLY_DIR, f"daily_data_{year_month}.parquet")
+
+    @staticmethod
     def parse_sirius_model(model_data: dict) -> tuple:
         try:
             res = model_data.get('结果', {})
@@ -438,6 +445,89 @@ class MarketData:
             return pd.DataFrame()
 
     @staticmethod
+    def _fetch_miniqmt_daily(code: str, date_str: str) -> pd.DataFrame:
+        """miniQMT 获取日线数据（完全对齐分钟结构）"""
+    
+        if not MINIQMT_AVAILABLE:
+            raise RuntimeError("miniQMT 不可用")
+    
+        miniqmt_code = MarketData._to_miniqmt_code(code)
+    
+        start_time = date_str.replace('-', '') + "000000"
+        end_time = date_str.replace('-', '') + "235959"
+    
+        try:
+            # 下载
+            xtdata.download_history_data(
+                miniqmt_code,
+                period='1d',
+                start_time=start_time,
+                end_time=end_time
+            )
+    
+            # 获取
+            try:
+                data = xtdata.get_market_data_ex(
+                    field_list=['time', 'open', 'close', 'high', 'low', 'volume'],
+                    stock_list=[miniqmt_code],
+                    period='1d',
+                    start_time=start_time,
+                    end_time=end_time
+                )
+            except Exception:
+                data = xtdata.get_market_data(
+                    field_list=['time', 'open', 'close', 'high', 'low', 'volume'],
+                    stock_list=[miniqmt_code],
+                    period='1d',
+                    start_time=start_time,
+                    end_time=end_time
+                )
+    
+            df = None
+            if isinstance(data, dict):
+                df = data.get(miniqmt_code)
+            elif isinstance(data, pd.DataFrame):
+                df = data
+    
+            if df is None or len(df) == 0:
+                logger.warning(f"日线空数据: {code} {date_str}")
+                return pd.DataFrame()
+    
+            df = pd.DataFrame(df)
+    
+            # 字段统一
+            df = df.rename(columns={
+                'time': '时间',
+                'open': '开盘',
+                'close': '收盘',
+                'high': '最高',
+                'low': '最低',
+                'volume': '成交量'
+            })
+    
+            # 时间处理（关键：转中国时间 + 归一到日期）
+            df['时间'] = pd.to_datetime(df['时间'], errors='coerce')
+    
+            # ⭐ 同样加8小时（与你分钟数据保持一致）
+            df['时间'] = df['时间'] + pd.Timedelta(hours=8)
+    
+            # ⭐ 归一为日期（核心区别）
+            df['时间'] = df['时间'].dt.normalize()
+    
+            df = df.dropna(subset=['时间'])
+    
+            required_cols = ['时间', '开盘', '收盘', '最高', '最低', '成交量']
+            for col in required_cols:
+                if col not in df.columns:
+                    return pd.DataFrame()
+    
+            return df[required_cols].sort_values('时间')
+    
+        except Exception as e:
+            logger.error(f"miniQMT 日线失败 {code} {date_str}: {e}")
+            return pd.DataFrame()
+
+    @staticmethod
     def preload_from_miniqmt(start_date: str, end_date: str):
         """通过 miniQMT 下载分钟数据，生成带 _qmt 后缀的月度 parquet 文件"""
         if not MINIQMT_AVAILABLE:
@@ -536,6 +626,86 @@ class MarketData:
             
         logger.info("miniQMT 数据预加载完成")
 
+
+    @staticmethod
+    def preload_daily_from_miniqmt(start_date: str, end_date: str):
+        """预加载日线数据"""
+    
+        if not MINIQMT_AVAILABLE:
+            logger.error("miniQMT 未就绪")
+            return
+    
+        dates = MarketData.get_model_dates(start_date, end_date)
+        if not dates:
+            return
+    
+        date_map = MarketData.build_date_map(dates)
+        today_str = MarketData._get_current_cn_date()
+    
+        raw_pairs = set()
+    
+        for m_date in dates:
+            t1, t2 = date_map[m_date]
+    
+            model_file = os.path.join(MODEL_HISTORY_DIR, f"{MODEL_NAME_PREFIX}_{m_date}.json")
+            if not os.path.exists(model_file):
+                continue
+    
+            with open(model_file, 'r', encoding='utf-8') as f:
+                targets, _ = MarketData.parse_sirius_model(json.load(f))
+    
+                for t in targets:
+                    code = MarketData._convert_code(t['code'])
+    
+                    if t1 <= today_str:
+                        raw_pairs.add((code, t1))
+                    if t2 <= today_str:
+                        raw_pairs.add((code, t2))
+    
+        # 按月份分组
+        monthly_pairs = {}
+        for code, date in raw_pairs:
+            ym = date[:7]
+            monthly_pairs.setdefault(ym, []).append((code, date))
+    
+        for ym, pairs in monthly_pairs.items():
+            logger.info(f"[日线] 处理 {ym} 共 {len(pairs)} 条")
+    
+            new_dfs = []
+    
+            for code, date in pairs:
+                df = MarketData._fetch_miniqmt_daily(code, date)
+    
+                if not df.empty:
+                    df['ts_code'] = code
+                    df['trade_date'] = date
+                    df = df[['时间', '开盘', '收盘', '最高', '最低', '成交量', 'ts_code', 'trade_date']]
+                    new_dfs.append(df)
+    
+            if not new_dfs:
+                continue
+    
+            combined = pd.concat(new_dfs, ignore_index=True)
+    
+            combined['ts_code'] = combined['ts_code'].astype(str).str.zfill(6)
+            combined['trade_date'] = combined['trade_date'].astype(str)
+    
+            p_path = MarketData.get_daily_file_path(ym, qmt_suffix=True)
+    
+            if os.path.exists(p_path):
+                try:
+                    old = pd.read_parquet(p_path)
+                    combined = pd.concat([old, combined], ignore_index=True)
+                except:
+                    pass
+    
+            combined.drop_duplicates(subset=['时间', 'ts_code', 'trade_date'], inplace=True)
+            combined.sort_values(['ts_code', '时间'], inplace=True)
+    
+            combined.to_parquet(p_path, index=False, engine='pyarrow')
+    
+            logger.info(f"[日线] 已保存 {p_path} 行数:{len(combined)}")
+
 # ========================= 回测主函数 =========================
 def run_download():
     # 先下载模型文件
@@ -545,6 +715,7 @@ def run_download():
     # 如果 miniQMT 可用，通过它预加载1分钟数据
     if MINIQMT_AVAILABLE:
         MarketData.preload_from_miniqmt(START_DATE, END_DATE)
+        MarketData.preload_daily_from_miniqmt(START_DATE, END_DATE)   # ✅新增
     logger.info("Market数据下载完成，退出")
 
 if __name__ == "__main__":
