@@ -1652,3 +1652,487 @@ def run_backtest():
 
 if __name__ == "__main__":
     run_backtest()
+
+
+
+#@title Unzip Data Files to PE Directory
+import os
+import zipfile
+from pathlib import Path
+
+# 定义相关路径   Q                # ← 请确认并修改为正确的名称
+pe_dir = Path("/content/PE")   # ← 必须改为 Path 对象
+zip_file_path = f'/content/AIPEQModel/minute/backtest_results.zip'
+print(zip_file_path)
+
+# 步骤 1：确保目标目录存在
+pe_dir.mkdir(parents=True, exist_ok=True)
+
+# 步骤 2：清除目录下所有 .parquet 文件
+deleted_count = 0
+for file in pe_dir.glob("*.xlsx"):
+    file.unlink()
+    deleted_count += 1
+
+print(f"已清除 {deleted_count} 个 .zip 文件（目录：{pe_dir}）。")
+
+# ==================== 扁平化解压 ====================
+if os.path.exists(zip_file_path):
+    extracted_count = 0
+
+    with zipfile.ZipFile(zip_file_path, 'r') as zipf:
+        for member in zipf.infolist():
+            if member.is_dir() or not member.filename.endswith('.xlsx'):
+                continue
+
+            # 只保留文件名（去除上层目录）
+            file_name = Path(member.filename).name
+
+            # 目标路径
+            target_path = pe_dir / file_name
+
+            # 解压文件
+            with zipf.open(member) as source, open(target_path, 'wb') as target:
+                target.write(source.read())
+
+            extracted_count += 1
+            print(f"已解压: {file_name}")
+
+    print(f"\n✅ 解压完成！共提取 {extracted_count} 个 .parquet 文件")
+    print(f"保存路径：{pe_dir}")
+
+else:
+    print(f"❌ 错误：压缩包文件 {zip_file_path} 不存在，请确认已生成该压缩包。")
+
+
+#@title Generation Performance Evaltion json File
+import pandas as pd
+import numpy as np
+import json
+import os
+import glob
+
+def generate_evaluation_json(file_path, output_name):
+    """
+    从给定Excel文件生成评估JSON。
+    参数:
+        file_path: Excel文件路径
+        output_name: 输出JSON文件路径
+    返回:
+        评估字典，若失败返回None
+    """
+    try:
+        # 读取 '持仓快照' 工作表，其中包含每日总资产值
+        df_snap = pd.read_excel(file_path, sheet_name='持仓快照')
+
+        # 获取每日总市值（筛选 code == 'TOTAL' 的行）
+        daily_total = df_snap[df_snap['code'] == 'TOTAL'][['date', 'market_value']].copy()
+        daily_total['date'] = pd.to_datetime(daily_total['date']).dt.strftime('%Y-%m-%d')
+        daily_total = daily_total.sort_values('date')
+
+        # 计算收益率
+        initial_value = 100000.0  # 模拟初始资金
+        daily_total['cumulative_return'] = (daily_total['market_value'] / initial_value) - 1
+        daily_total['daily_return'] = daily_total['market_value'].pct_change().fillna(
+            (daily_total['market_value'].iloc[0] / initial_value) - 1
+        )
+
+        # 最大回撤计算
+        daily_total['peak'] = daily_total['market_value'].cummax()
+        daily_total['drawdown'] = (daily_total['market_value'] - daily_total['peak']) / daily_total['peak']
+
+        # 核心指标
+        total_return = daily_total['cumulative_return'].iloc[-1]
+        days = len(daily_total)
+        annualized_return = (1 + total_return) ** (252 / days) - 1 if days > 0 else 0
+        max_drawdown = daily_total['drawdown'].min()
+
+        # 夏普比率（假设无风险利率为0）
+        std = daily_total['daily_return'].std()
+        sharpe = (daily_total['daily_return'].mean() / std) * np.sqrt(252) if std != 0 else 0
+
+        # 构建每日数据列表
+        daily_data = []
+        for idx, row in daily_total.iterrows():
+            daily_data.append({
+                "日期": row['date'],
+                "每日收益率": float(row['daily_return']),
+                "累计收益率": float(row['cumulative_return']),
+                "最大回撤率（至当日）": float(daily_total.loc[:idx, 'drawdown'].min())
+            })
+
+        # 最终评估结果
+        evaluation = {
+            "总收益率": float(total_return),
+            "年化收益率": float(annualized_return),
+            "最大回撤率": float(max_drawdown),
+            "夏普比率": float(sharpe),
+            "每日评估数据": daily_data
+        }
+
+        # 写入JSON文件
+        with open(output_name, 'w', encoding='utf-8') as f:
+            json.dump(evaluation, f, ensure_ascii=False, indent=2)
+
+        print(f"✅ 已生成评估JSON: {output_name}")
+        return evaluation
+
+    except Exception as e:
+        print(f"❌ 处理文件 {file_path} 时出错: {e}")
+        return None
+
+
+# ========== 主程序：遍历 /content/PE 目录下所有 Excel 文件 ==========
+if __name__ == "__main__":
+    # 指定目录和文件匹配模式（可根据实际情况调整）
+    input_dir = "/content/PE"
+    # 匹配所有以 .xlsx 结尾的文件，也可以修改为 'trade_records_dynamic_*.xlsx' 等特定模式
+    excel_pattern = os.path.join(input_dir, "*.xlsx")
+    excel_files = glob.glob(excel_pattern)
+
+    if not excel_files:
+        print(f"⚠️ 在目录 {input_dir} 下未找到任何 .xlsx 文件。")
+    else:
+        print(f"📂 找到 {len(excel_files)} 个Excel文件，开始批量生成评估JSON...\n")
+
+        for excel_path in excel_files:
+            # 生成对应的JSON文件名（与Excel同名，仅扩展名改为.json）
+            base_name = os.path.splitext(os.path.basename(excel_path))[0]
+            json_path = os.path.join(input_dir, f"eval_{base_name}.json")
+
+            # 调用函数生成评估文件
+            generate_evaluation_json(excel_path, json_path)
+
+        print(f"\n🎉 全部处理完成，JSON文件已保存至 {input_dir}")
+
+
+#@title Generat Graph based on Perfoance Evaluation Json Files
+import json
+import os
+import glob
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import ipywidgets as widgets
+from IPython.display import display
+
+# ---------- 字体智能配置 ----------
+# ---------- 字体智能配置（Colab最终稳定版） ----------
+def setup_chinese_font():
+    """在Colab中自动安装并注册中文字体（100%解决乱码）"""
+    try:
+        import matplotlib
+        import matplotlib.pyplot as plt
+        import subprocess
+        import os
+        from matplotlib import font_manager
+
+        # 1. 安装字体
+        subprocess.run(
+            ["apt-get", "update"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        subprocess.run(
+            ["apt-get", "install", "-y", "fonts-noto-cjk"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+
+        # 2. 找到字体文件（关键：不是用名字）
+        font_path = "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"
+        if not os.path.exists(font_path):
+            raise Exception("字体文件未找到")
+
+        # 3. 手动注册字体（关键步骤）
+        font_manager.fontManager.addfont(font_path)
+
+        # 4. 获取真实字体名
+        font_prop = font_manager.FontProperties(fname=font_path)
+        font_name = font_prop.get_name()
+
+        # 5. 强制使用
+        plt.rcParams['font.family'] = font_name
+        plt.rcParams['axes.unicode_minus'] = False
+
+        print(f"✅ 使用字体: {font_name}")
+        return True
+
+    except Exception as e:
+        print("❌ 中文字体加载失败:", e)
+        return False
+
+USE_CHINESE = setup_chinese_font()
+
+# ---------- 数据加载 ----------
+def load_evaluation_json(json_path):
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    daily = data['每日评估数据']
+    df = pd.DataFrame(daily)
+    df['日期'] = pd.to_datetime(df['日期'])
+    df = df.sort_values('日期')
+    return data, df
+
+
+def plot_with_selector(json_dir, pattern="*.json"):
+    import glob, os, re
+    import matplotlib.pyplot as plt
+    import matplotlib.dates as mdates
+    import ipywidgets as widgets
+    from IPython.display import display
+
+    # =========================
+    # 三种模式
+    # =========================
+    RETURN_MODE = "📈 收益率对比（模型选择）"
+    DRAWDOWN_MODE = "📉 回撤率对比（全部模型）"
+    SHARPE_MODE = "📊 夏普比率对比（全部模型）"
+
+    json_files = glob.glob(os.path.join(json_dir, pattern))
+    if not json_files:
+        print(f"⚠️ No JSON files found in {json_dir}.")
+        return
+
+    # =========================
+    # 1. file_map（真实key）
+    # =========================
+    file_map = {}
+    for json_file in json_files:
+        name = os.path.splitext(os.path.basename(json_file))[0]
+        match = re.search(r'((?:dynamic|static).*)', name, re.IGNORECASE)
+        label = match.group(1) if match else name
+        file_map[label] = json_file
+
+    # =========================
+    # 2. 收益排序（用于UI显示）
+    # =========================
+    label_perf = []
+    for label, json_file in file_map.items():
+        try:
+            data, _ = load_evaluation_json(json_file)
+            label_perf.append((label, data.get('总收益率', 0)))
+        except:
+            label_perf.append((label, 0))
+
+    label_perf.sort(key=lambda x: x[1], reverse=True)
+
+    display_labels = [
+        f"{label} ({ret:.2%})"
+        for label, ret in label_perf
+    ]
+
+    display_to_real = {
+        f"{label} ({ret:.2%})": label
+        for label, ret in label_perf
+    }
+
+    # =========================
+    # UI
+    # =========================
+    selector = widgets.SelectMultiple(
+        options=[RETURN_MODE, DRAWDOWN_MODE, SHARPE_MODE] + display_labels,
+        value=(display_labels[0],),
+        description='选择',
+        rows=min(12, len(display_labels) + 3)
+    )
+
+    button = widgets.Button(description="绘制", button_style='primary')
+    output = widgets.Output()
+
+    # =========================
+    # 点击逻辑
+    # =========================
+    def on_click(b):
+        with output:
+            output.clear_output()
+
+            selected = list(selector.value)
+
+            # =====================================================
+            # 📈 收益率模式（多选）
+            # =====================================================
+            if RETURN_MODE in selected:
+
+                selected = [s for s in selected if s not in [RETURN_MODE, DRAWDOWN_MODE, SHARPE_MODE]]
+
+                if len(selected) == 0:
+                    print("⚠️ 请至少选择一个模型")
+                    return
+
+                if len(selected) > 3:
+                    print("⚠️ 最多选择3个模型")
+                    return
+
+                plt.figure(figsize=(12, 6))
+
+                for s in selected:
+                    if s not in display_to_real:
+                        continue
+
+                    label = display_to_real[s]
+                    json_file = file_map[label]
+
+                    try:
+                        _, df = load_evaluation_json(json_file)
+                        plt.plot(df['日期'], df['累计收益率'] * 100,
+                                 label=s, linewidth=2)
+                    except:
+                        continue
+
+                if USE_CHINESE:
+                    plt.title("累计收益率对比", fontsize=14)
+                    plt.xlabel("日期")
+                    plt.ylabel("收益率 (%)")
+                else:
+                    plt.title("Cumulative Return", fontsize=14)
+
+                plt.legend()
+
+            # =====================================================
+            # 📉 回撤率模式（全模型 + 排序）
+            # =====================================================
+            elif DRAWDOWN_MODE in selected:
+
+                if len(selected) > 1:
+                    print("⚠️ 回撤模式不能与其他模式同时选择")
+                    return
+
+                sorted_items = []
+                for label, json_file in file_map.items():
+                    try:
+                        data, _ = load_evaluation_json(json_file)
+                        sorted_items.append((label, json_file, data.get('最大回撤率', 0)))
+                    except:
+                        continue
+
+                # 回撤越小越好
+                sorted_items.sort(key=lambda x: x[2], reverse=True)
+
+                plt.figure(figsize=(12, 6))
+
+                for i, (label, json_file, dd) in enumerate(sorted_items):
+                    try:
+                        _, df = load_evaluation_json(json_file)
+
+                        dd_col = None
+                        for c in ['最大回撤率（至当日）', '回撤率']:
+                            if c in df.columns:
+                                dd_col = c
+                                break
+
+                        if dd_col is None:
+                            continue
+
+                        plt.plot(df['日期'], df[dd_col] * 100,
+                                 label=f"{label} ({dd:.2%})",
+                                 linewidth=2.5 if i == 0 else 1.2)
+
+                    except:
+                        continue
+
+                if USE_CHINESE:
+                    plt.title("回撤率对比（低回撤优先）")
+                else:
+                    plt.title("Drawdown Comparison")
+
+                plt.legend()
+
+            # =====================================================
+            # 📊 夏普比率模式（全模型 + 排序）
+            # =====================================================
+            elif SHARPE_MODE in selected:
+
+                if len(selected) > 1:
+                    print("⚠️ 夏普模式不能与其他模式同时选择")
+                    return
+
+                sorted_items = []
+                for label, json_file in file_map.items():
+                    try:
+                        data, _ = load_evaluation_json(json_file)
+                        sorted_items.append((label, json_file, data.get('夏普比率', 0)))
+                    except:
+                        continue
+
+                # 夏普越高越好
+                sorted_items.sort(key=lambda x: x[2], reverse=True)
+
+                plt.figure(figsize=(12, 6))
+
+                for i, (label, json_file, sharpe) in enumerate(sorted_items):
+                    try:
+                        _, df = load_evaluation_json(json_file)
+
+                        plt.plot(
+                            df['日期'],
+                            df['累计收益率'] * 100,
+                            label=f"{label} (Sharpe={sharpe:.2f})",
+                            linewidth=2.5 if i == 0 else 1.2
+                        )
+                    except:
+                        continue
+
+                if USE_CHINESE:
+                    plt.title("夏普比率排序收益表现")
+                else:
+                    plt.title("Sharpe Sorted Performance")
+
+                plt.legend()
+
+            # =========================
+            # 通用
+            # =========================
+            plt.grid(True, linestyle='--', alpha=0.6)
+
+            ax = plt.gca()
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+            plt.xticks(rotation=30, ha='right')
+
+            plt.tight_layout()
+            plt.show()
+
+    button.on_click(on_click)
+
+    display(widgets.VBox([selector, button, output]))
+
+# ---------- 绘图函数 ----------
+def plot_cumulative_returns(json_dir, pattern="*.json"):
+    json_files = glob.glob(os.path.join(json_dir, pattern))
+    if not json_files:
+        print(f"⚠️ No JSON files found in {json_dir}.")
+        return
+
+    plt.figure(figsize=(12, 6))
+
+    for json_file in json_files:
+        name = os.path.splitext(os.path.basename(json_file))[0]
+
+        import re
+        match = re.search(r'(dynamic.*|static.*)', name)
+        label = match.group(1) if match else name
+        try:
+            _, df = load_evaluation_json(json_file)
+            plt.plot(df['日期'], df['累计收益率'] * 100, label=label, linewidth=1.5)
+        except Exception as e:
+            print(f"❌ Error processing {json_file}: {e}")
+
+    # 根据是否支持中文选择标签
+    if USE_CHINESE:
+        plt.title("策略累计收益率对比", fontsize=14)
+        plt.xlabel("日期")
+        plt.ylabel("累计收益率 (%)")
+    else:
+        plt.title("Cumulative Return Comparison", fontsize=14)
+        plt.xlabel("Date")
+        plt.ylabel("Cumulative Return (%)")
+
+    plt.legend(loc='best', fontsize=9)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    ax = plt.gca()
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+    plt.xticks(rotation=30, ha='right')
+    plt.tight_layout()
+    plt.show()
+
+# ---------- 运行 ----------
+if __name__ == "__main__":
+    #plot_cumulative_returns("/content/PE")
+    plot_with_selector("/content/PE")
