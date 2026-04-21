@@ -12,14 +12,14 @@ import random
 # ========================= 1. 配置 (对齐 SIRIUS & 基础设施) =========================
 class SimConfig:
     START_DATE = "2025-09-12"
-    END_DATE = "2026-04-20"
+    END_DATE = "2026-04-21"
     INITIAL_CASH = 100000.0
 
     # SIRIUS 策略逻辑
     TRADE_RATIO = 1
     BUY_REBOUND_RATIO = 0.0062
     SELL_DROP_RATIO = 0.0038
-    FORCE_DEADLINE_TIME = time(14, 45)
+    FORCE_DEADLINE_TIME = time(14, 50)
     FORCE_SELL_PRICE_RATIO = 0.995
 
     # 路径配置 (严格遵循参考样例)
@@ -651,7 +651,7 @@ class SiriusStrictExecutor:
                             })
 
         # --- 2. 尾盘强制卖出阶段 ---
-        trade_time_close = time(14, 50)
+        trade_time_close = SimConfig.FORCE_DEADLINE_TIME
         prices_1450 = {}
         for code in self.account.positions.keys():
             df = MarketData.get_minute_data(code, date_str)
@@ -803,6 +803,7 @@ if __name__ == "__main__":
     run_strict_backtest()
 
 
+
 # @title SIRIUS T1 BackTest Simulation (Dynamic Edition)
 
 #!/usr/bin/env python3
@@ -833,7 +834,7 @@ from typing import Dict, List, Optional, Tuple
 class SimConfig:
     # 回测时间范围
     START_DATE = "2025-09-12"
-    END_DATE = "2026-04-20"
+    END_DATE = "2026-04-21"
     INITIAL_CASH = 100000.0
     DEBUG = True
 
@@ -855,7 +856,7 @@ class SimConfig:
     MODEL_HISTORY_DIR = "./historical_models"
     DATA_CACHE_DIR = "./min_data_cache"
     MONTHLY_DIR = "./monthly_data"
-    MODEL_NAME_PREFIX = f"{TARGET_MODE_NAME}" 
+    MODEL_NAME_PREFIX = f"{TARGET_MODE_NAME}"
 
     # 数据获取 API（用于预下载）
     API_BASE_URL = "https://query.aivibeinvestment.com/api/query"
@@ -1453,7 +1454,7 @@ class SiriusSimulator:
 
         # 2. 计算基准资产和目标股数
         dt_start = datetime.combine(datetime.strptime(date_str, "%Y-%m-%d").date(), time(9, 31))
-        
+
         # 初始定价逻辑
         initial_prices = {}
         for code, df in daily_data.items():
@@ -1500,6 +1501,15 @@ class SiriusSimulator:
                     target_vol = target_vols.get(code, 0)
                     if pos['volume'] > target_vol:
                         sell_vol = min(pos.get('can_sell', 0), pos['volume'] - target_vol)
+                        
+                        # 防止可卖股数为0时产生无用逻辑
+                        if sell_vol <= 0: 
+                            continue
+                            
+                        # 【核心修复】：检查是否有当天的分钟数据（处理停牌或数据缺失情况）
+                        if code not in daily_data or current_dt not in daily_data[code].index:
+                            continue
+                            
                         price = daily_data[code].loc[current_dt, '收盘']
                         stk_name = target_info.get(code, {}).get('name', code)
                         if self.account.order(date_str, current_time, code, 'sell', sell_vol, price, "强制卖出", stk_name):
@@ -1652,6 +1662,8 @@ def run_backtest():
 
 if __name__ == "__main__":
     run_backtest()
+
+
 
 
 
