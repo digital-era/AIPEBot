@@ -1806,7 +1806,21 @@ if __name__ == "__main__":
         print(f"\n🎉 全部处理完成，JSON文件已保存至 {input_dir}")
 
 
-#@title Generat Graph based on Perfoance Evaluation Json Files
+
+
+# 安装中文字体（仅需运行一次）
+!apt-get install -y fonts-wqy-microhei > /dev/null
+!rm -rf /root/.cache/matplotlib
+
+# 重新导入 matplotlib 并设置字体
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei']  # 指定中文字体
+matplotlib.rcParams['axes.unicode_minus'] = False                 # 解决负号显示问题
+
+
+
+#@title Generat Graph based on Performance Evaluation Json Files
 import json
 import os
 import glob
