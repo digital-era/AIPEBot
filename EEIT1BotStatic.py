@@ -636,8 +636,9 @@ class TradeSignalGenerator:
 
         # 当前持仓字典
         current_dict = {}
+        name = all_names.get(code, code)   # 可以从外部传入的 all_names 字典获取
         for code, pos in current_positions.items():
-            logger.info(f"- 当前持仓信息: code {code}, name {h['name']}, volume {pos['volume']}, can_sell {pos['can_sell']}, avg_price {pos['avg_price']}")
+            logger.info(f"- 当前持仓信息: code {code}, name {name},  volume {pos['volume']}, can_sell {pos['can_sell']}, avg_price {pos['avg_price']}")
             current_dict[code] = {
                 'volume': pos['volume'],
                 'can_sell': pos['can_sell'],
@@ -917,7 +918,7 @@ class SIRIUSBot:
         target_vol_dict = {}
         for h in target_holdings:
             code = h['code']
-            effective_weight = h['weight'] * position_factor
+            effective_weight = h['weight'] //去掉多乘的 position_factor
             price = self.qmt.get_realtime_price(code)
             if price is None or price <= 0:
                 price = h['ref_price']
@@ -1095,6 +1096,8 @@ if __name__ == "__main__":
                                               (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE)):
                     
                     if (last_trade_date != today_str) and (current_time >= Config.MORNING_TRADE_TIME):
+                        logger.info(f"新交易日，重新加载模型...")
+                        bot._load_model_cache()           # ← 增加这一行，每日刷新模型
                         logger.info(f"进入交易时间，开始今日调仓: {today_str}")
                         bot.intraday_trade_once_static()
                         last_trade_date = today_str
