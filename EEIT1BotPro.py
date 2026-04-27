@@ -107,7 +107,7 @@ logger = setup_logger()
 
 # ========================= 模型加载模块 =========================
 class ModelLoader:
-
+    @staticmethod
     def _convert_code(code: str) -> str:
         c = str(code).split('.')[0].zfill(6)
         if len(c) > 6 and (c.endswith('.SH') or c.endswith('.SZ')):
@@ -1095,6 +1095,11 @@ if __name__ == "__main__":
                 # 盘中交易时段（避开尾盘强制卖出时段）
                 if (Config.MARKET_OPEN <= current_time <= Config.MARKET_CLOSE) and not (now.hour > Config.FORCE_SELL_HOUR or
                                               (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE)):
+                    # 如果是新交易日，先刷新模型
+                    if last_trade_date != today_str:
+                        logger.info(f"新交易日，重新加载模型...")
+                        bot._load_model_cache()
+                        last_trade_date = today_str
                     bot.intraday_trade_once()
 
                 # 尾盘强制卖出（14:50后）
