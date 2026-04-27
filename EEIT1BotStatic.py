@@ -636,9 +636,8 @@ class TradeSignalGenerator:
 
         # 当前持仓字典
         current_dict = {}
-        name = all_names.get(code, code)   # 可以从外部传入的 all_names 字典获取
         for code, pos in current_positions.items():
-            logger.info(f"- 当前持仓信息: code {code}, name {name},  volume {pos['volume']}, can_sell {pos['can_sell']}, avg_price {pos['avg_price']}")
+            logger.info(f"- 当前持仓信息: code {code}, name {all_names.get(code, code)},  volume {pos['volume']}, can_sell {pos['can_sell']}, avg_price {pos['avg_price']}")
             current_dict[code] = {
                 'volume': pos['volume'],
                 'can_sell': pos['can_sell'],
@@ -918,7 +917,7 @@ class SIRIUSBot:
         target_vol_dict = {}
         for h in target_holdings:
             code = h['code']
-            effective_weight = h['weight'] //去掉多乘的 position_factor
+            effective_weight = h['weight'] 
             price = self.qmt.get_realtime_price(code)
             if price is None or price <= 0:
                 price = h['ref_price']
@@ -1104,7 +1103,7 @@ if __name__ == "__main__":
 
                 # 尾盘强制卖出（14:50后）
                 if (now.hour > Config.FORCE_SELL_HOUR or
-                    (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE)) and bot.last_force_sell_date != today:
+                    (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE)) and bot.last_force_sell_date != today_str:
                     bot.force_sell_at_close()
 
                 # 收盘后快照（15:00后）
