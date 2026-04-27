@@ -526,11 +526,11 @@ class QMTClient:
                 return False
             if order_type == 'buy':
                 order_id = self.xt_trader.order_stock_async(
-                    self.account, code, xtconstant.STOCK_BUY, volume, price, 'limit'
+                    self.account, code, xtconstant.STOCK_BUY, volume, xtconstant.FIX_PRICE, price
                 )
             else:
                 order_id = self.xt_trader.order_stock_async(
-                    self.account, code, xtconstant.STOCK_SELL, volume, price, 'limit'
+                    self.account, code, xtconstant.STOCK_SELL, volume,xtconstant.FIX_PRICE,  price
                 )
             if order_id > 0:
                 logger.info(f"委托成功: {order_type} {code} {volume}股 @ {price:.2f}，订单号 {order_id}")
