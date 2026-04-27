@@ -526,11 +526,11 @@ class QMTClient:
                 return False
             if order_type == 'buy':
                 order_id = self.xt_trader.order_stock_async(
-                    self.account, code, xtconstant.STOCK_BUY, volume, price, 'limit'
+                    self.account, code, xtconstant.STOCK_BUY, volume, xtconstant.FIX_PRICE,  price
                 )
             else:
                 order_id = self.xt_trader.order_stock_async(
-                    self.account, code, xtconstant.STOCK_SELL, volume, price, 'limit'
+                    self.account, code, xtconstant.STOCK_SELL, volume, xtconstant.FIX_PRICE,  price
                 )
             if order_id > 0:
                 logger.info(f"委托成功: {order_type} {code} {volume}股 @ {price:.2f}，订单号 {order_id}")
@@ -715,7 +715,9 @@ class PerformanceEvaluator:
         logger.info(f"保存 {len(trades)} 条交易记录至 {Config.TRADE_RECORD_PATH}")
 
     @staticmethod
-    def save_position_snapshot(positions: Dict, total_asset: float):
+    def save_position_snapshot(positions: Dict, total_asset: float, name_map: Dict = None):
+        if name_map is None:
+            name_map = {}
         records = []
         for code, pos in positions.items():
             records.append({
@@ -996,11 +998,10 @@ class SIRIUSBot:
             logger.debug(f"当前 {now.strftime('%H:%M')} 未收盘，跳过持仓快照")
             return
         positions = self.qmt.get_positions()
+        account_info = self.qmt.get_account_info()
+        total_asset = account_info.get('total_asset', 0) if account_info else 0        
         # 传入名称映射表
         self.evaluator.save_position_snapshot(positions, total_asset, self.code_to_name)
-        account_info = self.qmt.get_account_info()
-        total_asset = account_info.get('total_asset', 0) if account_info else 0
-        self.evaluator.save_position_snapshot(positions, total_asset)
         logger.info("收盘后任务完成：持仓快照已保存")
 
     def run_full_day_once(self):
