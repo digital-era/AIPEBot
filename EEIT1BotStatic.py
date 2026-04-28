@@ -1031,7 +1031,7 @@ class SIRIUSBot:
 
             # 正常扫描
             if (not isoncepass and 
-                Config.MORNING_TRADE_TIME <= current_time <= TRADE_WINDOW_END):
+                Config.MORNING_TRADE_TIME <= current_time <= Config.TRADE_WINDOW_END):
                 self.intraday_trade_once_static()
                 isoncepass = True
 
@@ -1089,7 +1089,7 @@ if __name__ == "__main__":
             today_str = now.strftime("%Y-%m-%d")   # 定义 today_str
             current_time = now.time()
             # 每轮都会检查
-            if current_time > TRADE_WINDOW_END and last_trade_date != today_str:
+            if current_time > Config.TRADE_WINDOW_END and last_trade_date != today_str:
                 last_trade_date = today_str
                 
             if now.weekday() >= 5:
@@ -1102,7 +1102,7 @@ if __name__ == "__main__":
                 if (Config.MARKET_OPEN <= current_time <= Config.MARKET_CLOSE) and not (now.hour > Config.FORCE_SELL_HOUR or
                                               (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE)):
                     
-                     if (last_trade_date != today_str) and (Config.MORNING_TRADE_TIME <= current_time <= TRADE_WINDOW_END):
+                     if (last_trade_date != today_str) and (Config.MORNING_TRADE_TIME <= current_time <= Config.TRADE_WINDOW_END):
                         logger.info(f"新交易日，重新加载模型...")
                         bot._load_model_cache()           # ← 增加这一行，每日刷新模型
                         logger.info(f"进入交易时间，开始今日调仓: {today_str}")
