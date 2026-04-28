@@ -49,7 +49,7 @@ class Config:
     TRADE_RECORD_PATH = os.path.join(LOG_DIR, "trade_records.xlsx")
     POSITION_SNAPSHOT_PATH = os.path.join(LOG_DIR, "position_snapshots.xlsx")
 
-    MORNING_TRADE_TIME = dt_time(9, 30)   # 上午调仓时间点
+    MORNING_TRADE_TIME = dt_time(9, 45)   # 上午调仓时间点
 
     MARKET_OPEN = datetime.strptime("09:25", "%H:%M").time()
     MARKET_CLOSE = datetime.strptime("15:05", "%H:%M").time()  # 可调整为 15:05 更安全
@@ -63,7 +63,7 @@ class Config:
     SLIPPAGE = 0.002                # 滑点容忍度（0.2%）
     PRICE_TOLERANCE = 0.005
     ORDER_INTERVAL = 1.0
-    REAL_TRADE = False
+    REAL_TRADE = True
     DEBUG = True
 
     INTRADAY_TRADING = True
@@ -525,11 +525,13 @@ class QMTClient:
                 logger.warning(f"{code} 已{'涨停' if order_type=='buy' else '跌停'}，放弃下单")
                 return False
             if order_type == 'buy':
-                order_id = self.xt_trader.order_stock_async(
+                #order_id = self.xt_trader.order_stock_async(
+                order_id = self.xt_trader.order_stock(
                     self.account, code, xtconstant.STOCK_BUY, volume, xtconstant.FIX_PRICE, price
                 )
             else:
-                order_id = self.xt_trader.order_stock_async(
+                #order_id = self.xt_trader.order_stock_async(
+                order_id = self.xt_trader.order_stock(
                     self.account, code, xtconstant.STOCK_SELL, volume,xtconstant.FIX_PRICE,  price
                 )
             if order_id > 0:
