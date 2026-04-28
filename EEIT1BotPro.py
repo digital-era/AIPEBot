@@ -464,8 +464,8 @@ class QMTClient:
         if ref_price <= 0:
             return None
         real = self.get_realtime_price(code)
-        if real_price is not None:
-              logger.info(f"- 标的{code}:实时价格 {real_price:.2f}")       
+        if real is not None:
+              logger.info(f"- 标的{code}:实时价格 {real:.2f}")       
         if real is None:
             return ref_price
         return min(real, ref_price)
