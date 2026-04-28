@@ -464,7 +464,8 @@ class QMTClient:
         if ref_price <= 0:
             return None
         real = self.get_realtime_price(code)
-        logger.info(f"- 标的{code}:实时价格 {real:.2f}")
+        if real_price is not None:
+              logger.info(f"- 标的{code}:实时价格 {real_price:.2f}")       
         if real is None:
             return ref_price
         return min(real, ref_price)
@@ -1082,12 +1083,14 @@ if __name__ == "__main__":
         else:
             bot.run_full_day_once()
     else:  # daemon 模式
+        last_trade_date = None
+        today_str = None
         logger.info("启动守护模式（单线程调度器）")
         while True:
             now = datetime.now()
             current_time = now.time()
 
-            today = now.strftime("%Y-%m-%d")
+            today_str = now.strftime("%Y-%m-%d")
             if now.weekday() >= 5:
                 time.sleep(60)
                 continue
