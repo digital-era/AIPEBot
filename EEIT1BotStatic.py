@@ -50,6 +50,7 @@ class Config:
     POSITION_SNAPSHOT_PATH = os.path.join(LOG_DIR, "position_snapshots.xlsx")
 
     MORNING_TRADE_TIME = dt_time(9, 45)   # 上午调仓时间点
+    TRADE_WINDOW_END = dt_time(10, 0)   # 只允许 09:30–10:00 执行
 
     MARKET_OPEN = datetime.strptime("09:25", "%H:%M").time()
     MARKET_CLOSE = datetime.strptime("15:05", "%H:%M").time()  # 可调整为 15:05 更安全
@@ -1029,9 +1030,10 @@ class SIRIUSBot:
                 break
 
             # 正常扫描
-            if not isoncepass and current_time >= Config.MORNING_TRADE_TIME:
-              self.intraday_trade_once_static()
-              isoncepass = True
+            if (not isoncepass and 
+                Config.MORNING_TRADE_TIME <= current_time <= TRADE_WINDOW_END):
+                self.intraday_trade_once_static()
+                isoncepass = True
 
             time.sleep(Config.INTRADAY_SCAN_INTERVAL)
 
@@ -1081,11 +1083,15 @@ if __name__ == "__main__":
     else:  # daemon 模式
         logger.info("启动守护模式（单线程调度器）")
         last_trade_date = ""
-        last_force_sell_date = ""   # 已存在        
+        last_force_sell_date = ""   # 已存在   
         while True:
             now = datetime.now()
             today_str = now.strftime("%Y-%m-%d")   # 定义 today_str
             current_time = now.time()
+            # 每轮都会检查
+            if current_time > TRADE_WINDOW_END and last_trade_date != today_str:
+                last_trade_date = today_str
+                
             if now.weekday() >= 5:
                 time.sleep(60)
                 continue
@@ -1096,7 +1102,7 @@ if __name__ == "__main__":
                 if (Config.MARKET_OPEN <= current_time <= Config.MARKET_CLOSE) and not (now.hour > Config.FORCE_SELL_HOUR or
                                               (now.hour == Config.FORCE_SELL_HOUR and now.minute >= Config.FORCE_SELL_MINUTE)):
                     
-                    if (last_trade_date != today_str) and (current_time >= Config.MORNING_TRADE_TIME):
+                     if (last_trade_date != today_str) and (Config.MORNING_TRADE_TIME <= current_time <= TRADE_WINDOW_END):
                         logger.info(f"新交易日，重新加载模型...")
                         bot._load_model_cache()           # ← 增加这一行，每日刷新模型
                         logger.info(f"进入交易时间，开始今日调仓: {today_str}")
