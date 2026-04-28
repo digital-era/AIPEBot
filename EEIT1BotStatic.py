@@ -50,7 +50,7 @@ class Config:
     POSITION_SNAPSHOT_PATH = os.path.join(LOG_DIR, "position_snapshots.xlsx")
 
     MORNING_TRADE_TIME = dt_time(9, 45)   # 上午调仓时间点
-    TRADE_WINDOW_END = dt_time(10, 0)   # 只允许 09:30–10:00 执行
+    TRADE_WINDOW_END = dt_time(15, 05)   # 只允许 09:30–10:00 执行
 
     MARKET_OPEN = datetime.strptime("09:25", "%H:%M").time()
     MARKET_CLOSE = datetime.strptime("15:05", "%H:%M").time()  # 可调整为 15:05 更安全
