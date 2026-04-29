@@ -26,17 +26,17 @@ WATCH_LIST = {
     "601857.SH": {
         "buy_drop": -0.02,
         "sell_rise": 0.02,
-        "volume": 8000
+        "volume": 100 #8000
     },
     "601333.SH": {
         "buy_drop": -0.02,
         "sell_rise": 0.02,
-        "volume": 3200
+        "volume": 100 #3200
     },
     "601088.SH": {
         "buy_drop": -0.02,
         "sell_rise": 0.02,
-        "volume": 2000
+        "volume": 100 #2000
     }
 }
 
