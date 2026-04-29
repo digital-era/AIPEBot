@@ -13,10 +13,11 @@ from datetime import datetime
 
 from xtquant import xtdata
 from xtquant import xttrader
+from xtquant.xttrader import XtQuantTrader
 from xtquant.xttype import StockAccount
 
 # ================== 基础配置 ==================
-ACCOUNT_ID = "你的资金账号"
+ACCOUNT_ID = ""
 QMT_PATH = r"D:\国金证券QMT交易端\userdata_mini"
 
 CHECK_INTERVAL = 3   # 秒
@@ -75,7 +76,7 @@ class MultiSymbolTrader:
 
     # ===== 连接 =====
     def connect(self):
-        self.trader = xttrader.XtQuantTrader(path=QMT_PATH)
+        self.trader = XtQuantTrader(QMT_PATH, 1)
         self.account = StockAccount(ACCOUNT_ID)
 
         self.trader.start()
@@ -90,6 +91,7 @@ class MultiSymbolTrader:
     def init_ref_prices(self):
         codes = list(self.symbols.keys())
 
+        # ===== 尝试日线 =====
         data = xtdata.get_market_data(
             field_list=["open", "pre_close"],
             stock_list=codes,
@@ -99,17 +101,29 @@ class MultiSymbolTrader:
 
         for code in codes:
             df = data.get(code)
-            if df is None or df.empty:
-                logging.warning(f"{code} 无日线数据")
+
+            if df is not None and not df.empty:
+                if REF_PRICE_TYPE == "open":
+                    price = float(df["open"].iloc[-1])
+                else:
+                    price = float(df["pre_close"].iloc[-1])
+
+                self.symbols[code].ref_price = price
+                logging.info(f"{code} 日线参考价: {price}")
                 continue
 
-            if REF_PRICE_TYPE == "open":
-                price = float(df["open"].iloc[-1])
-            else:
-                price = float(df["pre_close"].iloc[-1])
+            # ===== fallback：用tick =====
+            tick = xtdata.get_full_tick([code]).get(code)
 
-            self.symbols[code].ref_price = price
-            logging.info(f"{code} 参考价: {price}")
+            if tick:
+                price = tick.get("lastPrice") or tick.get("open") or tick.get("preClose")
+
+                if price:
+                    self.symbols[code].ref_price = float(price)
+                    logging.warning(f"{code} 用tick替代参考价: {price}")
+                    continue
+
+            logging.error(f"{code} 无法获取参考价")
 
     # ===== 获取tick =====
     def get_ticks(self):
