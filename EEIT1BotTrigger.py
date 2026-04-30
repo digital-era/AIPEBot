@@ -38,6 +38,11 @@ WATCH_LIST = {
         "buy_drop": -0.02,
         "sell_rise": 0.02,
         "volume": 100 #2000
+    },
+    "002008.SZ": {
+        "buy_drop": -0.03,
+        "sell_rise": 0.025,
+        "volume": 100 #1000
     }
 }
 
