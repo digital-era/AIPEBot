@@ -12,41 +12,26 @@ import logging
 from datetime import datetime
 
 from xtquant import xtdata
-from xtquant import xttrader
-from xtquant.xttrader import XtQuantTrader
+from xtquant import xtconstant
+from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback
 from xtquant.xttype import StockAccount
 
+
 # ================== 基础配置 ==================
-ACCOUNT_ID = ""
+ACCOUNT_ID = "8886036261"
 QMT_PATH = r"D:\国金证券QMT交易端\userdata_mini"
 
 CHECK_INTERVAL = 3   # 秒
 
 # ================== 标的配置 ==================
 WATCH_LIST = {
-    "601857.SH": {
-        "buy_drop": -0.02,
-        "sell_rise": 0.02,
-        "volume": 100 #8000
-    },
-    "601333.SH": {
-        "buy_drop": -0.02,
-        "sell_rise": 0.02,
-        "volume": 100 #3200
-    },
-    "601088.SH": {
-        "buy_drop": -0.02,
-        "sell_rise": 0.02,
-        "volume": 100 #2000
-    },
-    "002008.SZ": {
-        "buy_drop": -0.03,
-        "sell_rise": 0.025,
-        "volume": 100 #1000
-    }
+    "601857.SH": {"buy_drop": -0.02, "sell_rise": 0.02, "volume": 100}, #8000
+   #"601333.SH": {"buy_drop": -0.02, "sell_rise": 0.02, "volume": 100}, #3200
+    "601088.SH": {"buy_drop": -0.02, "sell_rise": 0.02, "volume": 100}, #2000
+   #"002008.SZ": {"buy_drop": -0.03, "sell_rise": 0.025, "volume": 100}, #100
 }
 
-REF_PRICE_TYPE = "pre_close"  # or open
+REF_PRICE_TYPE = "pre_close"
 
 # ================== 日志 ==================
 logging.basicConfig(
@@ -54,11 +39,23 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+
+# ================== 回调类 ==================
+class MyCallback(XtQuantTraderCallback):
+    def on_order_stock_async_response(self, response):
+        logging.info(f"异步下单响应: seq={response.seq}, order_id={response.order_id}")
+        
+    def on_order_event(self, order, cancel_info=None):
+        logging.info(f"委托状态: {order.stock_code}, status={order.order_status}, vol={order.order_volume}")
+        
+    def on_trade_event(self, trade):
+        logging.info(f"成交: {trade.stock_code}, 成交{trade.traded_volume}股 @ {trade.traded_price}")
+
+
 # ================== 标的状态 ==================
 class SymbolState:
     def __init__(self, config):
         self.config = config
-
         self.ref_price = None
         self.has_bought = False
         self.has_sold = False
@@ -74,7 +71,7 @@ class MultiSymbolTrader:
     def __init__(self):
         self.trader = None
         self.account = None
-
+        self.callback = None
         self.symbols = {
             code: SymbolState(cfg) for code, cfg in WATCH_LIST.items()
         }
@@ -83,51 +80,33 @@ class MultiSymbolTrader:
     def connect(self):
         self.trader = XtQuantTrader(QMT_PATH, 1)
         self.account = StockAccount(ACCOUNT_ID)
-
+        
+        # 关键修复：注册回调对象
+        self.callback = MyCallback()
+        self.trader.register_callback(self.callback)
+        
         self.trader.start()
         ret = self.trader.connect()
 
         if ret != 0:
             raise Exception(f"连接失败: {ret}")
 
-        logging.info("✅ 交易连接成功")
+        logging.info("交易连接成功")
 
     # ===== 初始化参考价 =====
     def init_ref_prices(self):
         codes = list(self.symbols.keys())
-
-        # ===== 尝试日线 =====
-        data = xtdata.get_market_data(
-            field_list=["open", "pre_close"],
-            stock_list=codes,
-            period="1d",
-            count=1
-        )
-
         for code in codes:
-            df = data.get(code)
-
-            if df is not None and not df.empty:
-                if REF_PRICE_TYPE == "open":
-                    price = float(df["open"].iloc[-1])
-                else:
-                    price = float(df["pre_close"].iloc[-1])
-
-                self.symbols[code].ref_price = price
-                logging.info(f"{code} 日线参考价: {price}")
-                continue
-
-            # ===== fallback：用tick =====
             tick = xtdata.get_full_tick([code]).get(code)
-
             if tick:
-                price = tick.get("lastPrice") or tick.get("open") or tick.get("preClose")
-
+                if REF_PRICE_TYPE == "open":
+                    price = tick.get("open")
+                else:
+                    price = tick.get("lastClose")
                 if price:
                     self.symbols[code].ref_price = float(price)
-                    logging.warning(f"{code} 用tick替代参考价: {price}")
+                    logging.info(f"{code} 参考价: {price}")
                     continue
-
             logging.error(f"{code} 无法获取参考价")
 
     # ===== 获取tick =====
@@ -138,19 +117,23 @@ class MultiSymbolTrader:
     # ===== 下单 =====
     def order(self, code, price, volume, side):
         if side == "buy":
-            order_type = 23
+            order_type = xtconstant.STOCK_BUY
         else:
-            order_type = 24
+            order_type = xtconstant.STOCK_SELL
 
         logging.info(f"{code} 下单 {side} price={price} vol={volume}")
 
-        self.trader.order_stock(
-            account=self.account,
-            stock_code=code,
-            order_type=order_type,
+        seq = self.trader.order_stock_async(
+            self.account,
+            code,
+            order_type,
+            volume,
+            xtconstant.FIX_PRICE,
             price=price,
-            volume=volume
+            strategy_name="SIRIUS_T1",
+            order_remark=f"{side}_{code}"
         )
+        logging.info(f"下单请求已发送, seq={seq}")
 
     # ===== 主逻辑 =====
     def run(self):
@@ -160,9 +143,7 @@ class MultiSymbolTrader:
         while True:
             try:
                 ticks = self.get_ticks()
-
                 for code, state in self.symbols.items():
-
                     tick = ticks.get(code)
                     if not tick:
                         continue
@@ -172,22 +153,17 @@ class MultiSymbolTrader:
                         continue
 
                     pct = (price / state.ref_price) - 1
-
                     cfg = state.config
 
                     logging.info(f"{code} price={price:.2f} pct={pct:.2%}")
 
-                    # ===== 买入 =====
-                    if (pct <= cfg["buy_drop"]) and (not state.has_bought):
+                    # 买入
+                    if pct <= cfg["buy_drop"] and not state.has_bought:
                         self.order(code, price, cfg["volume"], "buy")
                         state.has_bought = True
 
-                    # ===== 卖出 =====
-                    if (
-                        pct >= cfg["sell_rise"]
-                        and state.has_bought
-                        and not state.has_sold
-                    ):
+                    # 卖出
+                    if pct >= cfg["sell_rise"] and not state.has_sold:
                         self.order(code, price, cfg["volume"], "sell")
                         state.has_sold = True
 
