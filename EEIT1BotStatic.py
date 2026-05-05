@@ -49,8 +49,8 @@ class Config:
     TRADE_RECORD_PATH = os.path.join(LOG_DIR, "trade_records.xlsx")
     POSITION_SNAPSHOT_PATH = os.path.join(LOG_DIR, "position_snapshots.xlsx")
 
-    MORNING_TRADE_TIME = dt_time(9, 45)   # 上午调仓时间点
-    TRADE_WINDOW_END = dt_time(15, 05)   # 只允许 09:30–10:00 执行
+    MORNING_TRADE_TIME = dt_time(9, 30)   # 上午调仓时间点
+    TRADE_WINDOW_END = dt_time(10, 0)   # 只允许 09:30–10:00 执行
 
     MARKET_OPEN = datetime.strptime("09:25", "%H:%M").time()
     MARKET_CLOSE = datetime.strptime("15:05", "%H:%M").time()  # 可调整为 15:05 更安全
@@ -76,8 +76,10 @@ class Config:
 
     #HTTP_PROXY = os.environ.get('HTTP_PROXY', '')
     #HTTPS_PROXY = os.environ.get('HTTPS_PROXY', '')
-    HTTP_PROXY = 'http://127.0.0.1:7890'
-    HTTPS_PROXY = 'http://127.0.0.1:7890'
+    #HTTP_PROXY = 'http://127.0.0.1:7890'
+    #HTTPS_PROXY = 'http://127.0.0.1:7890'
+    HTTP_PROXY = 'http://127.0.0.1:7897'
+    HTTPS_PROXY = 'http://127.0.0.1:7897'
 
 PROXIES = {}
 if Config.HTTP_PROXY:
@@ -566,17 +568,25 @@ class QMTClient:
             try:
                 orders = self.xt_trader.query_stock_orders(self.account)
                 pending = []
-                # QMT订单状态说明（根据迅投文档）：
-                # 0=未报, 1=已报, 2=部成, 3=已成, 4=已撤, 5=废单, 6=部撤
-                # 卖出委托的未完成状态包括：未报(0)、已报(1)、部成(2)
-                valid_statuses = {0, 1, 2}
+                
+                # ✅ 迅投状态值（不是 0,1,2）
+                valid_statuses = {
+                    xtconstant.ORDER_UNREPORTED,    # 48
+                    xtconstant.ORDER_WAIT_REPORTING,  # 49
+                    xtconstant.ORDER_REPORTED,        # 50
+                    xtconstant.ORDER_PART_SUCC,       # 55
+                }
+                
                 for order in orders:
-                    # 订单类型：1 表示卖出（STOCK_SELL）
-                    if order.m_nOrderType != 1:   # 1 = xtconstant.STOCK_SELL
+                    # ✅ 迅投 STOCK_SELL = 24（不是 1）
+                    if order.order_type != xtconstant.STOCK_SELL:
                         continue
-                    if order.m_nOrderStatus in valid_statuses:
-                        if code is None or order.m_strStockCode == code:
+                        
+                    # ✅ 使用 order_status（不是 m_nOrderStatus）
+                    if order.order_status in valid_statuses:
+                        if code is None or order.stock_code == code:
                             pending.append(order)
+                            
                 return pending
             except Exception as e:
                 logger.error(f"查询未成交卖出委托失败: {e}")
@@ -833,6 +843,7 @@ class SIRIUSBot:
             # 统一订阅所有目标股票的行情
             codes = [h['code'] for h in target_holdings]
             self.qmt.subscribe_all_periods(codes)
+            #self.qmt.subscribe_whole_quote(codes)
         if not target_holdings:
             logger.error("无有效目标持仓，无法继续")
             return
@@ -1012,6 +1023,7 @@ class SIRIUSBot:
             hold_codes = list(current_positions.keys())
             # 去重：只订阅那些尚未订阅的（目标股票已订阅，这里自动跳过）
             self.qmt.subscribe_all_periods(hold_codes)
+            #self.qmt.subscribe_whole_quote(hold_codes)
         
         isoncepass = False
 
@@ -1035,7 +1047,7 @@ class SIRIUSBot:
                 self.intraday_trade_once_static()
                 isoncepass = True
 
-            time.sleep(Config.INTRADAY_SCAN_INTERVAL)
+            time.sleep(Config.INTRADAY_SCAN_INTERVAL-0.5)
 
         # 执行尾盘卖出（仅14:50后有效）
         self.force_sell_at_close()
