@@ -34,12 +34,12 @@ except ImportError:
     logger.warning("miniQMT 未安装或无法导入，preload_from_miniqmt 将不可用")
 
 # ========================= 1. 配置 =========================
-START_DATE = "2026-01-29"
-END_DATE = "2026-02-28"
+START_DATE = "2026-04-23"
+END_DATE = "2026-04-30"
 
 MODEL_HISTORY_DIR = "./historical_models"      # 统一变量名
 MONTHLY_DIR = "./monthly_data"
-MODEL_NAME_PREFIX = "流入模型"
+MODEL_NAME_PREFIX = "高潜模型"
 DATA_CACHE_DIR = "./min_data_cache"
 
 # 代理配置
@@ -58,7 +58,7 @@ for d in [MODEL_HISTORY_DIR, MONTHLY_DIR, DATA_CACHE_DIR]:
     os.makedirs(d, exist_ok=True)
 
 # ========================= 2. 模型下载模块 =========================
-MODEL_API_BASE_URL = "https://raw.githubusercontent.com/digital-era/AIPEQModel/main/流入模型_"
+MODEL_API_BASE_URL = f"https://raw.githubusercontent.com/digital-era/AIPEQModel/main/{MODEL_NAME_PREFIX}_"
 MODEL_REQUEST_RETRIES = 3
 MODEL_REQUEST_TIMEOUT = 30
 MODEL_REQUEST_INTERVAL = 0.5
