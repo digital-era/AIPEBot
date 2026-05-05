@@ -75,8 +75,10 @@ class Config:
 
     #HTTP_PROXY = os.environ.get('HTTP_PROXY', '')
     #HTTPS_PROXY = os.environ.get('HTTPS_PROXY', '')
-    HTTP_PROXY = 'http://127.0.0.1:7890'
-    HTTPS_PROXY = 'http://127.0.0.1:7890'
+    #HTTP_PROXY = 'http://127.0.0.1:7890'
+    #HTTPS_PROXY = 'http://127.0.0.1:7890'
+    HTTP_PROXY = 'http://127.0.0.1:7897'
+    HTTPS_PROXY = 'http://127.0.0.1:7897'
 
 PROXIES = {}
 if Config.HTTP_PROXY:
@@ -204,6 +206,7 @@ class QMTClient:
         # 新增：记录已订阅的股票和周期
         self.subscribed_stocks = set()          # 已订阅 tick 的股票
         self.subscribed_minute_stocks = set()   # 已订阅 1m 的股票
+        self._history_downloaded = set()   # 新增
 
 
     def subscribe_stocks(self, stock_codes: List[str], period: str = 'tick'):
@@ -566,17 +569,25 @@ class QMTClient:
             try:
                 orders = self.xt_trader.query_stock_orders(self.account)
                 pending = []
-                # QMT订单状态说明（根据迅投文档）：
-                # 0=未报, 1=已报, 2=部成, 3=已成, 4=已撤, 5=废单, 6=部撤
-                # 卖出委托的未完成状态包括：未报(0)、已报(1)、部成(2)
-                valid_statuses = {0, 1, 2}
+                
+                # ✅ 迅投状态值（不是 0,1,2）
+                valid_statuses = {
+                    xtconstant.ORDER_UNREPORTED,    # 48
+                    xtconstant.ORDER_WAIT_REPORTING,  # 49
+                    xtconstant.ORDER_REPORTED,        # 50
+                    xtconstant.ORDER_PART_SUCC,       # 55
+                }
+                
                 for order in orders:
-                    # 订单类型：1 表示卖出（STOCK_SELL）
-                    if order.m_nOrderType != 1:   # 1 = xtconstant.STOCK_SELL
+                    # ✅ 迅投 STOCK_SELL = 24（不是 1）
+                    if order.order_type != xtconstant.STOCK_SELL:
                         continue
-                    if order.m_nOrderStatus in valid_statuses:
-                        if code is None or order.m_strStockCode == code:
+                        
+                    # ✅ 使用 order_status（不是 m_nOrderStatus）
+                    if order.order_status in valid_statuses:
+                        if code is None or order.stock_code == code:
                             pending.append(order)
+                            
                 return pending
             except Exception as e:
                 logger.error(f"查询未成交卖出委托失败: {e}")
@@ -585,51 +596,59 @@ class QMTClient:
     def get_dynamic_reference_price(self, code: str, minutes: int = 30) -> Optional[float]:
         """获取过去N分钟均价（使用1分钟K线）"""
         try:
-            end_time = datetime.now()
-            # 开始时间固定为当天 09:30:00（交易时段起始）
-            start_time = datetime(end_time.year, end_time.month, end_time.day, 9, 30, 0)
-
-            # 如果当前时间早于开盘，无法获取有效数据
-            if end_time < start_time:
-                logger.debug(f"当前时间 {end_time} 早于开盘时间，跳过动态参考价获取")
-                return None
-
-            # 格式化时间字符串为8位日期格式（YYYYMMDD）
+            now = datetime.now()
+            today = now.strftime("%Y%m%d")
+            
+            # ✅ 计算时间范围（修复：补回缺失的 start_date/end_date）
+            start_time = now - timedelta(minutes=minutes)
+            market_open = datetime(now.year, now.month, now.day, 9, 30, 0)
+            if start_time < market_open:
+                start_time = market_open
             start_date = start_time.strftime("%Y%m%d")
-            end_date = end_time.strftime("%Y%m%d")
-
-            # 下载历史分钟线数据
-            xtdata.download_history_data(code, period='1m', start_time=start_date, end_time=end_date)
-
-            # 获取市场数据
-            data = xtdata.get_market_data(
+            end_date = now.strftime("%Y%m%d")
+            
+            # ✅ 按需订阅 1m
+            if code not in self.subscribed_minute_stocks:
+                try:
+                    xtdata.subscribe_quote(code, period='1m')
+                    self.subscribed_minute_stocks.add(code)
+                    time.sleep(0.3)
+                except Exception as e:
+                    logger.warning(f"订阅 {code} 1m 失败: {e}")
+            
+            # ✅ 当天首次访问该股票时，下载一次历史数据
+            cache_key = f"{code}_{today}"
+            if cache_key not in self._history_downloaded:
+                try:
+                    xtdata.download_history_data(code, period='1m', start_time=today, end_time=today)
+                    self._history_downloaded.add(cache_key)
+                    time.sleep(0.2)
+                    logger.info(f"首次下载 {code} 今日 1m 历史数据")
+                except Exception as e:
+                    logger.warning(f"下载 {code} 历史数据失败: {e}")
+            
+            # 获取数据
+            data = xtdata.get_market_data_ex(
                 field_list=['close'],
                 stock_list=[code],
                 period='1m',
-                start_time=start_date,
-                end_time=end_date
+                start_time=start_date,   # ✅ 已定义
+                end_time=end_date        # ✅ 已定义
             )
-
-            # 关键修复：正确处理数据结构
-            if data is not None and 'close' in data:
-                df = data['close']
-                if not df.empty:
-                    # 直接获取股票代码对应的数据行
-                    if code in df.index:
-                        # 提取该股票的所有收盘价数据
-                        prices = df.loc[code]
-                        # 检查是否有足够有效数据
-                        valid_prices = prices.dropna()
-                        if not valid_prices.empty:
-                            # 取最近minutes分钟的有效数据
-                            recent_prices = valid_prices.tail(minutes)
-                            if not recent_prices.empty:
-                                # 计算均价（直接对Series求平均）
-                                return float(recent_prices.mean())
             
-            logger.warning(f"获取 {code} 动态参考价失败：数据不足或处理异常")
+            if data is not None and code in data:
+                df = data[code]
+                if not df.empty and 'close' in df.columns:
+                    prices = df['close'].dropna()
+                    if len(prices) > 0:
+                        recent_prices = prices.tail(minutes)
+                        return float(recent_prices.mean())
+            
+            logger.warning(f"获取 {code} 动态参考价失败：数据不足")
+            
         except Exception as e:
             logger.warning(f"获取 {code} 动态参考价失败: {e}")
+        s
         return None
 
 # ========================= 交易信号生成器 =========================
@@ -782,6 +801,7 @@ class SIRIUSBot:
             # 统一订阅所有目标股票的行情
             codes = [h['code'] for h in target_holdings]
             self.qmt.subscribe_all_periods(codes)
+            #self.qmt.subscribe_whole_quote(codes)
         if not target_holdings:
             logger.error("无有效目标持仓，无法继续")
             return
@@ -1020,6 +1040,7 @@ class SIRIUSBot:
             hold_codes = list(current_positions.keys())
             # 去重：只订阅那些尚未订阅的（目标股票已订阅，这里自动跳过）
             self.qmt.subscribe_all_periods(hold_codes)
+            #self.qmt.subscribe_whole_quote(codes)
 
         while True:
             now = datetime.now()
