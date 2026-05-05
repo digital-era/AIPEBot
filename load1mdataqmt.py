@@ -43,8 +43,10 @@ MODEL_NAME_PREFIX = "流入模型"
 DATA_CACHE_DIR = "./min_data_cache"
 
 # 代理配置
-HTTP_PROXY = 'http://127.0.0.1:7890'
-HTTPS_PROXY = 'http://127.0.0.1:7890'
+#HTTP_PROXY = 'http://127.0.0.1:7890'
+#HTTPS_PROXY = 'http://127.0.0.1:7890'
+HTTP_PROXY = 'http://127.0.0.1:7897'
+HTTPS_PROXY = 'http://127.0.0.1:7897'
 PROXIES = {}
 if HTTP_PROXY:
     PROXIES['http'] = HTTP_PROXY
