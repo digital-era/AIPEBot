@@ -56,7 +56,7 @@ class Config:
     
     # 风控参数
     STOP_LOSS_PCT = 0.05       # 止损比例（跌破下沿5%止损）
-    MAX_DAILY_TRADE = 10       # 单日最大交易次数
+    MAX_DAILY_TRADE = 3       # 单日最大交易次数
     COOLDOWN_SECONDS = 30      # 同方向交易冷却时间（秒）
     
     # 运行参数
