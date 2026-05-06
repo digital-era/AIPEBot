@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-miniQMT 实盘网格交易策略 - 陕天然气(002267)
+miniQMT 实盘网格交易策略 - 
 策略参数：
-  - 网格下沿: 7.59, 网格上沿: 8.05
-  - 网格数量: 5, 间距: 0.0769
-  - 胜率: 48.39%, 最大回撤: -3.62%
+  - 网格下沿, 网格上沿
+  - 网格数量, 间距
+  - 胜率, 最大回撤
   
 运行前准备：
   1. 安装 xtquant: pip install xtquant
@@ -25,7 +25,7 @@ from pathlib import Path
 
 # miniQMT 核心库
 from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback
-from xtquant.xtquant import StockAccount
+from xtquant.xttype import StockAccount
 from xtquant import xtconstant
 from xtquant import xtdata
 
@@ -37,7 +37,7 @@ class Config:
     MINI_QMT_PATH = r"D:\国金证券QMT交易端\userdata_mini"
     
     # 交易账号（替换为您的资金账号）
-    ACCOUNT_ID = "8886036261"  # 请修改为您的实际资金账号
+    ACCOUNT_ID = ""  # 请修改为您的实际资金账号
     
     # 标的配置
     STOCK_CODE = "603379.SH"   # 三美股份
@@ -50,8 +50,8 @@ class Config:
     GRID_STEP = 0.9193         # 网格间距（程序会自动计算，此项为参考）
     
     # 交易参数
-    SHARES_PER_GRID = 200     # 每格交易股数（100的整数倍）
-    MAX_POSITION = 1200        # 最大持仓股数（GRID_COUNT * SHARES_PER_GRID）
+    SHARES_PER_GRID = 100     # 每格交易股数（100的整数倍）
+    MAX_POSITION = 600        # 最大持仓股数（GRID_COUNT * SHARES_PER_GRID）
     MIN_POSITION = 0           # 最小持仓股数
     
     # 风控参数
@@ -377,7 +377,7 @@ class GridStrategy:
                 price_type,
                 order_price,
                 strategy_name="GridStrategy",
-                remark=f"Grid_L{level}"
+                order_remark=f"Grid_L{level}"
             )
             
             if order_id and order_id > 0:
