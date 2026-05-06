@@ -1010,6 +1010,21 @@ class SIRIUSBot:
         positions = self.qmt.get_positions()
         self.evaluator.save_position_snapshot(positions, total_asset, self.code_to_name)
 
+    def query_order(self):
+        # 下单后，通过 query 主动查询（可能有延迟）
+        order = xt_trader.query_stock_order(acc, "1082141144")
+        if order:
+            print(f"查询结果: 状态={order.order_status}")  # 48未报 49待报 50已报...
+        else:
+            print("查询无记录，可能尚未同步到本地")
+
+        # 下单后，通过 query 主动查询（可能有延迟）
+        order = xt_trader.query_stock_order(acc, "1082141253")
+        if order:
+            print(f"查询结果: 状态={order.order_status}")  # 48未报 49待报 50已报...
+        else:
+            print("查询无记录，可能尚未同步到本地")
+
     def run_full_day_once_static(self):
         logger.info("========== SIRIUS 完整交易日开始 ==========")
 
@@ -1080,6 +1095,9 @@ if __name__ == "__main__":
                         help='运行模式: once-执行一次完整交易日流程后退出; daemon-守护模式')
     parser.add_argument('--snapshot-only', action='store_true',
                         help='仅执行收盘快照，不交易（用于收盘后调用）')
+
+    parser.add_argument('--queryorder', action='queryorder',
+                        help='仅执行收盘快照，不交易（用于收盘后调用）')
     args = parser.parse_args()
 
     bot = SIRIUSBot()
@@ -1090,6 +1108,8 @@ if __name__ == "__main__":
     if args.mode == 'once':
         if args.snapshot_only:
             bot.after_close()
+        else if args.queryorder:
+            bot.query_order()
         else:
             bot.run_full_day_once_static()
     else:  # daemon 模式
