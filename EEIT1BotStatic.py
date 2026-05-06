@@ -1009,22 +1009,25 @@ class SIRIUSBot:
         total_asset = account_info.get('total_asset', 0) if account_info else 0
         positions = self.qmt.get_positions()
         self.evaluator.save_position_snapshot(positions, total_asset, self.code_to_name)
-
+        
     def query_order(self):
-        # 下单后，通过 query 主动查询（可能有延迟）
-        order = xt_trader.query_stock_order(acc, "1082141144")
+        # 获取账户对象（StockAccount 实例，在 connect 时已赋值）
+        account = self.qmt.account
+        # 订单号使用整数（去掉引号）
+        order_id = 1082141144
+        order = self.qmt.xt_trader.query_stock_order(account, order_id)
         if order:
-            print(f"查询结果: 状态={order.order_status}")  # 48未报 49待报 50已报...
+            print(f"订单 {order_id} 状态: {order.order_status}")
         else:
-            print("查询无记录，可能尚未同步到本地")
+            print(f"订单 {order_id} 查询无记录")
 
-        # 下单后，通过 query 主动查询（可能有延迟）
-        order = xt_trader.query_stock_order(acc, "1082141253")
-        if order:
-            print(f"查询结果: 状态={order.order_status}")  # 48未报 49待报 50已报...
+        order_id2 = 1082141253
+        order2 = self.qmt.xt_trader.query_stock_order(account, order_id2)
+        if order2:
+            print(f"订单 {order_id2} 状态: {order2.order_status}")
         else:
-            print("查询无记录，可能尚未同步到本地")
-
+            print(f"订单 {order_id2} 查询无记录")
+        
     def run_full_day_once_static(self):
         logger.info("========== SIRIUS 完整交易日开始 ==========")
 
@@ -1095,8 +1098,7 @@ if __name__ == "__main__":
                         help='运行模式: once-执行一次完整交易日流程后退出; daemon-守护模式')
     parser.add_argument('--snapshot-only', action='store_true',
                         help='仅执行收盘快照，不交易（用于收盘后调用）')
-
-    parser.add_argument('--queryorder', action='queryorder',
+    parser.add_argument('--queryorder', action='store_true',
                         help='仅执行收盘快照，不交易（用于收盘后调用）')
     args = parser.parse_args()
 
@@ -1108,7 +1110,7 @@ if __name__ == "__main__":
     if args.mode == 'once':
         if args.snapshot_only:
             bot.after_close()
-        else if args.queryorder:
+        elif args.queryorder:
             bot.query_order()
         else:
             bot.run_full_day_once_static()
