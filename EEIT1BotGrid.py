@@ -61,7 +61,7 @@ class Config:
     
     # 运行参数
     CHECK_INTERVAL = 3         # 行情检查间隔（秒）
-    SESSION_ID = 123456        # 会话ID（不同策略使用不同ID）
+    SESSION_ID = int(str(time.time_ns())[-8:]) + os.getpid() % 1000        # 会话ID（不同策略使用不同ID）
     
     # 日志路径
     LOG_DIR = "./grid_logs"
