@@ -446,7 +446,7 @@ class GridStrategy:
         
         # 风控检查
         if direction != "HOLD":
-            passed, reason = self.check_risk(price)
+            passed, reason = self.check_risk(price, direction)
             if not passed:
                 self.logger.warning(f"⛔ 风控拦截: {reason}")
                 return
