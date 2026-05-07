@@ -179,6 +179,7 @@ class GridTradeCallback(XtQuantTraderCallback):
     def __init__(self, strategy):
         self.strategy = strategy
         self.orders: Dict[str, dict] = {}  # 订单跟踪
+        self.available_shares = 0   # 当前可卖数量（T+0 可卖）
     
     def on_disconnected(self):
         """连接断开"""
@@ -292,17 +293,16 @@ class GridStrategy:
             json.dump(state, f)
     
     def update_position_after_trade(self, trade):
-        """成交后更新持仓"""
         if trade.stock_code != self.config.STOCK_CODE:
             return
-            
         if trade.order_type == xtconstant.STOCK_BUY:
             self.current_shares += trade.traded_volume
+            # 买入当天不可卖，available_shares 不变
         else:
             self.current_shares -= trade.traded_volume
-        
+            self.available_shares -= trade.traded_volume  # 卖出会消耗可卖量
         self._save_state()
-        self.logger.info(f"📊 持仓更新: 当前持有 {self.current_shares} 股")
+        self.logger.info(f"📊 持仓更新: 总={self.current_shares}, 可卖={self.available_shares}")
     
     def get_market_price(self) -> Optional[float]:
         """获取最新市场价格"""
@@ -424,6 +424,16 @@ class GridStrategy:
         
         # 计算网格信号
         direction, volume, level = self.grid_calc.get_trade_signal(price, self.current_shares)
+
+        # T+1 限制：卖出量不能超过可卖数量
+        if direction == "SELL":
+            if volume > self.available_shares:
+                self.logger.info(f"⚠️ 卖出量 {volume} 超过可卖 {self.available_shares}，截断为可卖量")
+                volume = self.available_shares
+            if volume <= 0:
+                # 无可卖，暂不操作，但更新层级避免重复日志
+                self.current_level = level
+                return
         
         # 2. 如果层级未变且方向为HOLD，不操作
         if level == self.current_level and direction == "HOLD":
@@ -471,20 +481,22 @@ class GridStrategy:
         return False
 
     def _sync_position(self):
-        #同步实际持仓到本地状态
         try:
             positions = self.xt_trader.query_stock_positions(self.account)
             for pos in positions:
                 if pos.stock_code == self.config.STOCK_CODE:
-                    if pos.volume != self.current_shares:
-                        self.logger.info(f"持仓同步: {self.current_shares} -> {pos.volume}")
+                    if pos.volume != self.current_shares or pos.can_use_volume != self.available_shares:
+                        self.logger.info(f"持仓同步: 总持仓 {self.current_shares}->{pos.volume}, "
+                                         f"可卖 {self.available_shares}->{pos.can_use_volume}")
                         self.current_shares = pos.volume
+                        self.available_shares = pos.can_use_volume
                         self._save_state()
                     return
             # 无持仓
             if self.current_shares != 0:
-                self.logger.info(f"持仓同步: {self.current_shares} -> 0")
+                self.logger.info(f"持仓同步: 总持仓 {self.current_shares}->0, 可卖 {self.available_shares}->0")
                 self.current_shares = 0
+                self.available_shares = 0
                 self._save_state()
         except Exception as e:
             self.logger.error(f"同步持仓失败: {e}")
