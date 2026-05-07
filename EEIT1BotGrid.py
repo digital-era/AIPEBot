@@ -118,7 +118,6 @@ class GridCalculator:
         self.shares = shares
         self.grids: List[GridLevel] = []
         self._build_grids()
-        self.available_shares = 0   # 当前可卖数量
     
     def _build_grids(self):
         """构建等差网格"""
@@ -240,6 +239,7 @@ class GridStrategy:
         
         # 交易状态
         self.current_shares = 0          # 当前持仓
+        self.available_shares = 0   # 当前可卖数量
         self.current_level = -1          # 当前网格层级
         self.daily_trade_count = 0       # 当日交易次数
         self.last_trade_time = 0         # 上次交易时间
