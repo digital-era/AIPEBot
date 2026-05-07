@@ -251,9 +251,13 @@ class GridStrategy:
         
         # 加载状态
         self._load_state()
+
+        self.pending_orders: Dict[int, int] = {}  # 订单ID -> 委托数量
         
         # 初始化 miniQMT
         self._init_trader()
+
+        
     
     def _init_trader(self):
         """初始化交易接口"""
@@ -405,6 +409,9 @@ class GridStrategy:
     
     def run_once(self):
         """单次策略循环"""
+        # 1. 先同步持仓
+        self._sync_position()
+      
         # 获取行情
         price = self.get_market_price()
         if price is None:
@@ -414,8 +421,15 @@ class GridStrategy:
         # 计算网格信号
         direction, volume, level = self.grid_calc.get_trade_signal(price, self.current_shares)
         
-        # 如果层级未变且方向为HOLD，不操作
+        # 2. 如果层级未变且方向为HOLD，不操作
         if level == self.current_level and direction == "HOLD":
+            return
+
+        # 3. 同方向且同层级，检查是否有未完成的委托
+        if (direction == self.last_trade_direction and 
+            level == self.current_level and 
+            self.has_pending_order(direction)):
+            self.logger.info(f"已有同方向委托未完成，跳过")
             return
         
         self.logger.info(f"📈 价格={price:.3f} | 当前层={self.current_level} | "
@@ -431,6 +445,26 @@ class GridStrategy:
             # 执行交易
             self.execute_trade(direction, volume, price, level)
             self.current_level = level
+
+
+      def _sync_position(self):
+        """同步实际持仓到本地状态"""
+        try:
+            positions = self.xt_trader.query_stock_positions(self.account)
+            for pos in positions:
+                if pos.stock_code == self.config.STOCK_CODE:
+                    if pos.volume != self.current_shares:
+                        self.logger.info(f"持仓同步: {self.current_shares} -> {pos.volume}")
+                        self.current_shares = pos.volume
+                        self._save_state()
+                    return
+            # 无持仓
+            if self.current_shares != 0:
+                self.logger.info(f"持仓同步: {self.current_shares} -> 0")
+                self.current_shares = 0
+                self._save_state()
+        except Exception as e:
+            self.logger.error(f"同步持仓失败: {e}")
     
     def emergency_close(self):
         """紧急平仓（止损或收盘）"""
