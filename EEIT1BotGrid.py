@@ -408,7 +408,7 @@ class GridStrategy:
             self.logger.error(f"❌ 交易异常: {e}")
     
     def run_once(self):
-        """单次策略循环"""
+        #单次策略循环
         # 1. 先同步持仓
         self._sync_position()
       
@@ -446,9 +446,27 @@ class GridStrategy:
             self.execute_trade(direction, volume, price, level)
             self.current_level = level
 
+    def has_pending_order(self, direction: str) -> bool:
+        """检查是否有同方向未完成委托"""
+        try:
+            # 查询当日该股票的所有订单
+            orders = self.xt_trader.query_stock_orders(
+                self.account, self.config.STOCK_CODE
+            )
+            # 未完成状态: 未报(48)、待报(49)、已报(50)、部成(54)
+            unfinished = {48, 49, 50, 54}
+            for order in orders:
+                if order.order_status in unfinished:
+                    if direction == "BUY" and order.order_type == xtconstant.STOCK_BUY:
+                        return True
+                    if direction == "SELL" and order.order_type == xtconstant.STOCK_SELL:
+                        return True
+        except Exception as e:
+            self.logger.warning(f"查询未完成委托失败: {e}")
+        return False
 
-      def _sync_position(self):
-        """同步实际持仓到本地状态"""
+    def _sync_position(self):
+        #同步实际持仓到本地状态
         try:
             positions = self.xt_trader.query_stock_positions(self.account)
             for pos in positions:
