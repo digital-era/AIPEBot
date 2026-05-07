@@ -30,6 +30,7 @@ from xtquant.xttype import StockAccount
 # ================== 基础配置 ==================
 ACCOUNT_ID = ""
 QMT_PATH = r"D:\国金证券QMT交易端\userdata_mini"
+SESSION_ID = int(str(time.time_ns())[-8:]) + os.getpid() % 1000        # 会话ID（不同策略使用不同ID）
 
 CHECK_INTERVAL = 3   # 秒
 
@@ -344,7 +345,7 @@ class MultiSymbolTrader:
     def connect(self):
         """连接miniQMT"""
         logger.info("正在连接 miniQMT...")
-        self.trader = XtQuantTrader(QMT_PATH, 1)
+        self.trader = XtQuantTrader(QMT_PATH, SESSION_ID )
         self.account = StockAccount(ACCOUNT_ID)
 
         # 注册回调对象（关键修复）
