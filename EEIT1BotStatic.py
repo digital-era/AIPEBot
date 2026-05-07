@@ -74,6 +74,8 @@ class Config:
     INTRADAY_SCAN_INTERVAL = 60
     INTRADAY_COOLDOWN_SEC = 300     # 同一股票动态交易冷却时间（秒）
 
+    SESSION_ID = int(str(time.time_ns())[-8:]) + os.getpid() % 1000        # 会话ID（不同策略使用不同ID）
+
     #HTTP_PROXY = os.environ.get('HTTP_PROXY', '')
     #HTTPS_PROXY = os.environ.get('HTTPS_PROXY', '')
     #HTTP_PROXY = 'http://127.0.0.1:7890'
@@ -375,7 +377,7 @@ class QMTClient:
             return False
         try:
             if self.xt_trader is None:
-                self.xt_trader = XtQuantTrader(Config.QMT_PATH, 1)
+                self.xt_trader = XtQuantTrader(Config.QMT_PATH, config.SESSION_ID)
                 self.xt_trader.start()
                 self.account = StockAccount(Config.ACCOUNT_ID)
             connect_result = self.xt_trader.connect()
