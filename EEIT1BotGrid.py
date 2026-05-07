@@ -336,18 +336,21 @@ class GridStrategy:
         # 1. 止损检查
         stop_loss_price = self.config.GRID_LOWER * (1 - self.config.STOP_LOSS_PCT)
         if price < stop_loss_price:
-            return False, f"止损触发: 价格{price} < 止损价{stop_loss_price:.3f}"
+            self.logger.warning("止损触发，执行紧急平仓！")
+            self.emergency_close()
+            return False, "止损已执行"
         
         # 2. 交易次数检查
         if self.daily_trade_count >= self.config.MAX_DAILY_TRADE:
             return False, f"日交易次数超限: {self.daily_trade_count}"
         
         # 3. 冷却时间检查
-        if time.time() - self.last_trade_time < self.config.COOLDOWN_SECONDS:
-            return False, "冷却时间未结束"
+        if (direction == self.last_trade_direction and 
+            time.time() - self.last_trade_time < self.config.COOLDOWN_SECONDS):
+            return False, "同方向冷却中"
         
         # 4. 持仓上限检查
-        if self.current_shares >= self.config.MAX_POSITION:
+        if direction == "BUY" and self.current_shares >= self.config.MAX_POSITION:
             return False, f"持仓已达上限: {self.current_shares}"
         
         return True, "通过"
@@ -356,6 +359,11 @@ class GridStrategy:
         """执行交易"""
         if direction == "HOLD" or volume <= 0:
             return
+
+        if direction == "BUY":
+            volume = (volume // 100) * 100
+            if volume <= 0:
+                return
         
         # 确定委托类型
         if direction == "BUY":
@@ -423,6 +431,7 @@ class GridStrategy:
         
         # 2. 如果层级未变且方向为HOLD，不操作
         if level == self.current_level and direction == "HOLD":
+            self.current_level = level
             return
 
         # 3. 同方向且同层级，检查是否有未完成的委托
@@ -525,8 +534,10 @@ class GridStrategy:
                     continue
                 
                 # 重置日计数（开盘时）
-                if now.hour == 9 and now.minute == 30:
+                today = now.date()
+                if not hasattr(self, '_last_trade_date') or self._last_trade_date != today:
                     self.daily_trade_count = 0
+                    self._last_trade_date = today
                 
                 # 执行策略
                 self.run_once()
