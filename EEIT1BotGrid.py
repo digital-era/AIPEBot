@@ -118,6 +118,7 @@ class GridCalculator:
         self.shares = shares
         self.grids: List[GridLevel] = []
         self._build_grids()
+        self.available_shares = 0   # 当前可卖数量
     
     def _build_grids(self):
         """构建等差网格"""
@@ -179,7 +180,6 @@ class GridTradeCallback(XtQuantTraderCallback):
     def __init__(self, strategy):
         self.strategy = strategy
         self.orders: Dict[str, dict] = {}  # 订单跟踪
-        self.available_shares = 0   # 当前可卖数量（T+0 可卖）
     
     def on_disconnected(self):
         """连接断开"""
@@ -197,7 +197,7 @@ class GridTradeCallback(XtQuantTraderCallback):
     
     def on_stock_trade(self, trade):
         """成交回报"""
-        logger.info(f"✅ 成交确认: {trade.stock_code} | 方向={'买' if trade.order_type==23 else '卖'} | "
+        logger.info(f"✅ 成交确认: {trade.stock_code} | 方向={'买' if trade.order_type==xtconstant.STOCK_BUY else '卖'} | "
                    f"成交价={trade.traded_price} | 成交量={trade.traded_volume}")
         # 更新持仓
         self.strategy.update_position_after_trade(trade)
