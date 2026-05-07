@@ -331,28 +331,24 @@ class GridStrategy:
             self.logger.error(f"行情获取失败: {e}")
         return None
     
-    def check_risk(self, price: float) -> Tuple[bool, str]:
+    def check_risk(self, price: float, direction: str) -> Tuple[bool, str]:
         """风险检查"""
-        # 1. 止损检查
         stop_loss_price = self.config.GRID_LOWER * (1 - self.config.STOP_LOSS_PCT)
         if price < stop_loss_price:
             self.logger.warning("止损触发，执行紧急平仓！")
             self.emergency_close()
             return False, "止损已执行"
-        
-        # 2. 交易次数检查
+    
         if self.daily_trade_count >= self.config.MAX_DAILY_TRADE:
             return False, f"日交易次数超限: {self.daily_trade_count}"
-        
-        # 3. 冷却时间检查
+    
         if (direction == self.last_trade_direction and 
-            time.time() - self.last_trade_time < self.config.COOLDOWN_SECONDS):
+                time.time() - self.last_trade_time < self.config.COOLDOWN_SECONDS):
             return False, "同方向冷却中"
-        
-        # 4. 持仓上限检查
+    
         if direction == "BUY" and self.current_shares >= self.config.MAX_POSITION:
             return False, f"持仓已达上限: {self.current_shares}"
-        
+    
         return True, "通过"
     
     def execute_trade(self, direction: str, volume: int, price: float, level: int):
