@@ -268,4 +268,7 @@ D:\AIPEQModelSIRIUS\static>
 2026-05-07 11:31:46,846 [INFO] ============================================================
 2026-05-07 11:31:46,919 [INFO] 交易订阅结果: 0
 
+2026-05-07 11:49:19,328 [ERROR] 同步持仓失败: 'GridStrategy' object has no attribute 'available_shares'
 
+
+2026-05-07 11:49:19,328 [ERROR] 同步持仓失败: 'GridStrategy' object has no attribute 'available_shares'
