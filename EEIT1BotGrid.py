@@ -521,6 +521,8 @@ class GridStrategy:
         self.logger.info(f"交易订阅结果: {subscribe_result}")
         
         self.is_running = True
+        # 启动时同步一次实际持仓，避免本地状态偏差
+        self._sync_position()
         
         try:
             while self.is_running:
