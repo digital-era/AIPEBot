@@ -377,7 +377,7 @@ class QMTClient:
             return False
         try:
             if self.xt_trader is None:
-                self.xt_trader = XtQuantTrader(Config.QMT_PATH, config.SESSION_ID)
+                self.xt_trader = XtQuantTrader(Config.QMT_PATH, Config.SESSION_ID)
                 self.xt_trader.start()
                 self.account = StockAccount(Config.ACCOUNT_ID)
             connect_result = self.xt_trader.connect()
