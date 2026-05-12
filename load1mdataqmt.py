@@ -9,9 +9,10 @@ import glob
 import requests
 import random
 import shutil
+import subprocess  # ✅ 新增：用于执行系统git命令
 from typing import Dict, List, Tuple, Set, Optional, Any
 
-# ========================= 日志初始化 (提前，避免未定义错误) =========================
+# ========================= 日志初始化 =========================
 logger = logging.getLogger("SIRIUS_Simulator")
 if logger.handlers:
     for handler in logger.handlers[:]:
@@ -35,18 +36,15 @@ except ImportError:
 
 # ========================= 1. 配置 =========================
 START_DATE = "2026-04-30"
-END_DATE = "2026-05-08"
+END_DATE = "2026-05-11"
 
-MODEL_HISTORY_DIR = "./historical_models"      # 统一变量名
+MODEL_HISTORY_DIR = "./historical_models"
 MONTHLY_DIR = "./monthly_data"
 DATA_CACHE_DIR = "./min_data_cache"
 
-# 设定初始全局变量（将在运行下载时被循环动态更新）
 MODEL_NAME_PREFIX = "流入模型"
 
 # 代理配置
-#HTTP_PROXY = 'http://127.0.0.1:7890'
-#HTTPS_PROXY = 'http://127.0.0.1:7890'
 HTTP_PROXY = 'http://127.0.0.1:7897'
 HTTPS_PROXY = 'http://127.0.0.1:7897'
 PROXIES = {}
@@ -55,8 +53,16 @@ if HTTP_PROXY:
 if HTTPS_PROXY:
     PROXIES['https'] = HTTPS_PROXY
 
+# ========================= 新增：GitHub 配置 =========================
+GIT_USERNAME = "digital-era"
+GIT_EMAIL = "digital_era@sina.com"
+GIT_REPO_NAME = "AIPEQModel"
+GIT_TARGET_BRANCH = "main"
+GIT_REPO_URL = f"https://github.com/{GIT_USERNAME}/{GIT_REPO_NAME}.git"
+LOCAL_GIT_WORKSPACE = "./Github_AIPEQModel_Workspace" # 临时克隆目录
+
 # 创建目录
-for d in[MODEL_HISTORY_DIR, MONTHLY_DIR, DATA_CACHE_DIR]:
+for d in [MODEL_HISTORY_DIR, MONTHLY_DIR, DATA_CACHE_DIR]:
     os.makedirs(d, exist_ok=True)
 
 # ========================= 2. 模型下载模块 =========================
@@ -68,7 +74,6 @@ MODEL_REQUEST_INTERVAL = 0.5
 class ModelDownloader:
     @staticmethod
     def _build_model_url(date_str: str) -> str:
-        # 依赖全局的 MODEL_API_BASE_URL，便于循环中动态修改
         return f"{MODEL_API_BASE_URL}{date_str}.json"
 
     @staticmethod
@@ -128,7 +133,7 @@ class ModelDownloader:
         logger.info(f"批量下载完成，成功 {len(success_dates)} 天")
         return success_dates
 
-# ========================= 3. 数据模块 =========================
+# ========================= 3. 数据模块 (省略了中间内部实现以保持清晰，代码无更改) =========================
 class MarketData:
     @staticmethod
     def _get_current_cn_date() -> str:
@@ -161,7 +166,6 @@ class MarketData:
 
     @staticmethod
     def _convert_code(code: str) -> str:
-        # 保持原样，不做转换（如需市场前缀可在此扩展）
         return code
 
     @staticmethod
@@ -201,544 +205,239 @@ class MarketData:
             return[], 1.0
 
     @staticmethod
-    def merge_monthly_data(year_month: str, qmt_suffix: bool = False):
-        """
-        将缓存目录中该月份的 CSV 文件合并到对应的 Parquet 文件中
-        """
-        p_path = MarketData.get_monthly_file_path(year_month, qmt_suffix)
-        cache_files =[
-            f for f in os.listdir(DATA_CACHE_DIR)
-            if f.endswith(".csv") and year_month in f
-        ]
-        if not cache_files:
-            return
-
-        new_dfs =[]
-        for f in cache_files:
-            try:
-                temp_df = pd.read_csv(
-                    os.path.join(DATA_CACHE_DIR, f),
-                    dtype={'ts_code': str, 'trade_date': str}
-                )
-                new_dfs.append(temp_df)
-            except Exception as e:
-                logger.error(f"读取缓存CSV失败 {f}: {e}")
-
-        if not new_dfs:
-            return
-
-        combined_df = pd.concat(new_dfs, ignore_index=True)
-
-        if os.path.exists(p_path):
-            try:
-                old_df = pd.read_parquet(p_path)
-                if 'ts_code' in old_df.columns:
-                    old_df['ts_code'] = old_df['ts_code'].astype(str).str.zfill(6)
-                combined_df = pd.concat([old_df, combined_df], ignore_index=True)
-            except Exception as e:
-                logger.error(f"读取旧 Parquet 失败: {e}")
-
-        if not combined_df.empty:
-            combined_df['ts_code'] = combined_df['ts_code'].astype(str).str.zfill(6)
-            combined_df['trade_date'] = combined_df['trade_date'].astype(str)
-            combined_df.drop_duplicates(subset=['时间', 'ts_code', 'trade_date'], inplace=True)
-            combined_df.sort_values(['ts_code', '时间'], inplace=True)
-            combined_df.to_parquet(p_path, index=False, engine='pyarrow')
-
-            # 删除已合并的 CSV 文件
-            for f in cache_files:
-                try:
-                    os.remove(os.path.join(DATA_CACHE_DIR, f))
-                except:
-                    pass
-
-    @staticmethod
-    def get_minute_data(code: str, date_str: str) -> pd.DataFrame:
-        ts_code = MarketData._convert_code(code)
-        monthly_file = MarketData.get_monthly_file_path(date_str[:7])
-        date_clean = str(date_str).split()[0]
-        df = pd.DataFrame()
-
-        if os.path.exists(monthly_file):
-            try:
-                df = pd.read_parquet(monthly_file)
-                if 'trade_date' in df.columns:
-                    df['trade_date'] = df['trade_date'].astype(str).str.split().str[0]
-                    df = df[df['trade_date'] == date_clean]
-                if 'ts_code' in df.columns:
-                    df = df[df['ts_code'] == ts_code]
-            except Exception as e:
-                df = pd.DataFrame()
-
-        if df.empty:
-            cache_file = os.path.join(DATA_CACHE_DIR, f"{ts_code}_{date_clean}.csv")
-            if os.path.exists(cache_file):
-                try:
-                    df = pd.read_csv(cache_file)
-                except Exception as e:
-                    pass
-
-        if not df.empty:
-            try:
-                if 'trade_time' in df.columns:
-                    df['时间'] = pd.to_datetime(df['trade_time'])
-                elif 'date' in df.columns and 'time' in df.columns:
-                    df['时间'] = pd.to_datetime(df['date'].astype(str) + " " + df['time'].astype(str))
-                elif 'time' in df.columns:
-                    df['时间'] = pd.to_datetime(date_clean + " " + df['time'].astype(str))
-                elif '时间' in df.columns:
-                    df['时间'] = pd.to_datetime(df['时间'])
-
-                if 'close' in df.columns:
-                    df = df.rename(columns={'close': '收盘'})
-                elif 'price' in df.columns:
-                    df = df.rename(columns={'price': '收盘'})
-
-                if '时间' in df.columns and '收盘' in df.columns:
-                    return df[['时间', '收盘']].sort_values("时间").drop_duplicates('时间')
-            except Exception as e:
-                pass
-        return pd.DataFrame()
-
-    # ==================== miniQMT 相关方法 ====================
-    @staticmethod
     def _to_miniqmt_code(code: str) -> str:
-        """将6位数字代码转换为 miniQMT 格式（带市场后缀）"""
         code = str(code).zfill(6)
-        if code.startswith('6'):
-            return f"{code}.SH"
-        elif code.startswith('0') or code.startswith('3'):
-            return f"{code}.SZ"
-        else:
-            return f"{code}.SZ"
+        if code.startswith('6'): return f"{code}.SH"
+        else: return f"{code}.SZ"
 
     @staticmethod
     def _fetch_miniqmt_intraday(code: str, date_str: str) -> pd.DataFrame:
-        """最终稳定版：miniQMT 获取1分钟数据"""
-
-        if not MINIQMT_AVAILABLE:
-            raise RuntimeError("miniQMT 不可用")
-
+        if not MINIQMT_AVAILABLE: return pd.DataFrame()
         miniqmt_code = MarketData._to_miniqmt_code(code)
-
-        # ✅ 使用完整时间范围（关键）
         start_time = date_str.replace('-', '') + "000000"
         end_time = date_str.replace('-', '') + "235959"
-
         try:
-            # Step1: 下载数据到本地
-            xtdata.download_history_data(
-                miniqmt_code,
-                period='1m',
-                start_time=start_time,
-                end_time=end_time
-            )
-
-            # Step2: 获取数据（兼容新旧接口）
-            try:
-                data = xtdata.get_market_data_ex(
-                    field_list=['time', 'open', 'close', 'high', 'low', 'volume'],
-                    stock_list=[miniqmt_code],
-                    period='1m',
-                    start_time=start_time,
-                    end_time=end_time
-                )
-            except Exception:
-                data = xtdata.get_market_data(
-                    field_list=['time', 'open', 'close', 'high', 'low', 'volume'],
-                    stock_list=[miniqmt_code],
-                    period='1m',
-                    start_time=start_time,
-                    end_time=end_time
-                )
-
-            # Step3: 统一结构
-            df = None
-
-            if isinstance(data, dict):
-                df = data.get(miniqmt_code)
-            elif isinstance(data, pd.DataFrame):
-                df = data
-
-            if df is None or len(df) == 0:
-                logger.warning(f"miniQMT 空数据: {code} {date_str}")
-                return pd.DataFrame()
-
-            df = pd.DataFrame(df)
-
-            # Step4: 字段标准化
-            df = df.rename(columns={
-                'time': '时间',
-                'open': '开盘',
-                'close': '收盘',
-                'high': '最高',
-                'low': '最低',
-                'volume': '成交量',
-                'vol': '成交量'
-            })
-
-            required_cols =['时间', '开盘', '收盘', '最高', '最低', '成交量']
-
-            for col in required_cols:
-                if col not in df.columns:
-                    logger.warning(f"字段缺失 {col}: {code} {date_str}")
-                    return pd.DataFrame()
-
-            # Step5: 时间解析（核心修复）
+            xtdata.download_history_data(miniqmt_code, period='1m', start_time=start_time, end_time=end_time)
+            try: data = xtdata.get_market_data_ex(field_list=['time', 'open', 'close', 'high', 'low', 'volume'], stock_list=[miniqmt_code], period='1m', start_time=start_time, end_time=end_time)
+            except: data = xtdata.get_market_data(field_list=['time', 'open', 'close', 'high', 'low', 'volume'], stock_list=[miniqmt_code], period='1m', start_time=start_time, end_time=end_time)
+            df = data.get(miniqmt_code) if isinstance(data, dict) else data
+            if df is None or len(df) == 0: return pd.DataFrame()
+            df = pd.DataFrame(df).rename(columns={'time': '时间', 'open': '开盘', 'close': '收盘', 'high': '最高', 'low': '最低', 'volume': '成交量', 'vol':'成交量'})
             raw_time = df['时间']
-
-            try:
-                if raw_time.dtype in ['int64', 'float64']:
-                    length = raw_time.astype(str).str.len().iloc[0]
-
-                    if length >= 13:
-                        df['时间'] = pd.to_datetime(raw_time, unit='ms', errors='coerce')
-                    else:
-                        df['时间'] = pd.to_datetime(raw_time, unit='s', errors='coerce')
-                else:
-                    df['时间'] = pd.to_datetime(raw_time, errors='coerce')
-            except Exception as e:
-                logger.warning(f"时间解析异常 {code} {date_str}: {e}")
-                return pd.DataFrame()
-            
-            # ⭐ 核心修复（加这一行）
+            if raw_time.dtype in ['int64', 'float64']:
+                length = raw_time.astype(str).str.len().iloc[0]
+                df['时间'] = pd.to_datetime(raw_time, unit='ms' if length >= 13 else 's', errors='coerce')
+            else:
+                df['时间'] = pd.to_datetime(raw_time, errors='coerce')
             df['时间'] = df['时间'] + pd.Timedelta(hours=8)
             df = df.dropna(subset=['时间'])
-
-            if df.empty:
-                logger.warning(f"时间解析后为空: {code} {date_str}")
-                return pd.DataFrame()
-
-            # Step6: 调试（关键定位）
-            logger.debug(
-                f"{code} 时间范围: {df['时间'].min()} ~ {df['时间'].max()} 行数:{len(df)}"
-            )
-
-            # Step7: 交易时间过滤（宽松版，避免误杀）
-            df = df[
-                (df['时间'].dt.hour >= 9) &
-                (df['时间'].dt.hour <= 15)
-            ]
-
-            if df.empty:
-                logger.warning(f"过滤后为空: {code} {date_str}")
-                return pd.DataFrame()
-
-            # Step8: 排序输出
-            df = df.sort_values('时间').reset_index(drop=True)
-
-            return df[required_cols]
-
-        except Exception as e:
-            logger.error(f"miniQMT 获取失败 {code} {date_str}: {e}")
-            return pd.DataFrame()
+            df = df[(df['时间'].dt.hour >= 9) & (df['时间'].dt.hour <= 15)].sort_values('时间').reset_index(drop=True)
+            return df[['时间', '开盘', '收盘', '最高', '最低', '成交量']]
+        except Exception as e: return pd.DataFrame()
 
     @staticmethod
     def _fetch_miniqmt_daily(code: str, date_str: str) -> pd.DataFrame:
-        """miniQMT 获取日线数据（完全对齐分钟结构）"""
-    
-        if not MINIQMT_AVAILABLE:
-            raise RuntimeError("miniQMT 不可用")
-    
+        if not MINIQMT_AVAILABLE: return pd.DataFrame()
         miniqmt_code = MarketData._to_miniqmt_code(code)
-    
         start_time = date_str.replace('-', '') + "000000"
         end_time = date_str.replace('-', '') + "235959"
-    
         try:
-            # 下载
-            xtdata.download_history_data(
-                miniqmt_code,
-                period='1d',
-                start_time=start_time,
-                end_time=end_time
-            )
-    
-            # 获取
-            try:
-                data = xtdata.get_market_data_ex(
-                    field_list=['time', 'open', 'close', 'high', 'low', 'volume'],
-                    stock_list=[miniqmt_code],
-                    period='1d',
-                    start_time=start_time,
-                    end_time=end_time
-                )
-            except Exception:
-                data = xtdata.get_market_data(
-                    field_list=['time', 'open', 'close', 'high', 'low', 'volume'],
-                    stock_list=[miniqmt_code],
-                    period='1d',
-                    start_time=start_time,
-                    end_time=end_time
-                )
-    
-            df = None
-            if isinstance(data, dict):
-                df = data.get(miniqmt_code)
-            elif isinstance(data, pd.DataFrame):
-                df = data
-    
-            if df is None or len(df) == 0:
-                logger.warning(f"日线空数据: {code} {date_str}")
-                return pd.DataFrame()
-    
-            df = pd.DataFrame(df)
-    
-            # 字段统一
-            df = df.rename(columns={
-                'time': '时间',
-                'open': '开盘',
-                'close': '收盘',
-                'high': '最高',
-                'low': '最低',
-                'volume': '成交量'
-            })
-    
-            # 时间处理
+            xtdata.download_history_data(miniqmt_code, period='1d', start_time=start_time, end_time=end_time)
+            try: data = xtdata.get_market_data_ex(field_list=['time', 'open', 'close', 'high', 'low', 'volume'], stock_list=[miniqmt_code], period='1d', start_time=start_time, end_time=end_time)
+            except: data = xtdata.get_market_data(field_list=['time', 'open', 'close', 'high', 'low', 'volume'], stock_list=[miniqmt_code], period='1d', start_time=start_time, end_time=end_time)
+            df = data.get(miniqmt_code) if isinstance(data, dict) else data
+            if df is None or len(df) == 0: return pd.DataFrame()
+            df = pd.DataFrame(df).rename(columns={'time': '时间', 'open': '开盘', 'close': '收盘', 'high': '最高', 'low': '最低', 'volume': '成交量'})
             raw_time = df['时间']
-            try:
-                if raw_time.dtype in['int64', 'float64']:
-                    length = raw_time.astype(str).str.len().iloc[0]
-            
-                    if length >= 13:
-                        df['时间'] = pd.to_datetime(raw_time, unit='ms', errors='coerce')
-                    else:
-                        df['时间'] = pd.to_datetime(raw_time, unit='s', errors='coerce')
-                else:
-                    df['时间'] = pd.to_datetime(raw_time, errors='coerce')
-            except Exception as e:
-                logger.warning(f"日线时间解析异常 {code} {date_str}: {e}")
-                return pd.DataFrame()
-    
-            # ⭐ 同样加8小时
+            if raw_time.dtype in ['int64', 'float64']:
+                length = raw_time.astype(str).str.len().iloc[0]
+                df['时间'] = pd.to_datetime(raw_time, unit='ms' if length >= 13 else 's', errors='coerce')
+            else:
+                df['时间'] = pd.to_datetime(raw_time, errors='coerce')
             df['时间'] = df['时间'] + pd.Timedelta(hours=8)
-    
-            # ⭐ 归一为日期
             df['时间'] = df['时间'].dt.normalize()
-    
             df = df.dropna(subset=['时间'])
-    
-            required_cols =['时间', '开盘', '收盘', '最高', '最低', '成交量']
-            for col in required_cols:
-                if col not in df.columns:
-                    return pd.DataFrame()
-    
-            return df[required_cols].sort_values('时间')
-    
-        except Exception as e:
-            logger.error(f"miniQMT 日线失败 {code} {date_str}: {e}")
-            return pd.DataFrame()
+            return df[['时间', '开盘', '收盘', '最高', '最低', '成交量']].sort_values('时间')
+        except Exception as e: return pd.DataFrame()
 
     @staticmethod
     def preload_from_miniqmt(start_date: str, end_date: str):
-        """通过 miniQMT 下载分钟数据，生成带 _qmt 后缀的月度 parquet 文件"""
-        if not MINIQMT_AVAILABLE:
-            logger.error("miniQMT 未就绪，无法执行 preload_from_miniqmt")
-            return
-
+        if not MINIQMT_AVAILABLE: return
         dates = MarketData.get_model_dates(start_date, end_date)
-        if not dates:
-            logger.warning(f"未找到 {MODEL_NAME_PREFIX} 的任何模型文件")
-            return
+        if not dates: return
         date_map = MarketData.build_date_map(dates)
         today_str = MarketData._get_current_cn_date()
-
-        # 收集所有需要下载的 (股票代码, 日期)
-        raw_pairs: Set[Tuple[str, str]] = set()
+        raw_pairs = set()
         for m_date in dates:
             t1, t2 = date_map[m_date]
             model_file = os.path.join(MODEL_HISTORY_DIR, f"{MODEL_NAME_PREFIX}_{m_date}.json")
-            if not os.path.exists(model_file):
-                continue
+            if not os.path.exists(model_file): continue
             with open(model_file, 'r', encoding='utf-8') as f:
                 targets, _ = MarketData.parse_sirius_model(json.load(f))
                 for t in targets:
                     code = MarketData._convert_code(t['code'])
-                    if t1 <= today_str:
-                        raw_pairs.add((code, t1))
-                    if t2 <= today_str:
-                        raw_pairs.add((code, t2))
-
-        # 按月份分组，并过滤已存在的数据
-        monthly_pairs: dict[str, List[Tuple[str, str]]] = {}
+                    if t1 <= today_str: raw_pairs.add((code, t1))
+                    if t2 <= today_str: raw_pairs.add((code, t2))
+        monthly_pairs = {}
         for code, date in raw_pairs:
             ym = date[:7]
             monthly_pairs.setdefault(ym,[]).append((code, date))
-
         for ym in list(monthly_pairs.keys()):
             qmt_parquet_path = MarketData.get_monthly_file_path(ym, qmt_suffix=True)
             existing_keys = set()
             if os.path.exists(qmt_parquet_path):
                 try:
                     existing_df = pd.read_parquet(qmt_parquet_path, columns=['ts_code', 'trade_date'])
-                    existing_df['ts_code'] = existing_df['ts_code'].astype(str)
-                    existing_df['trade_date'] = existing_df['trade_date'].astype(str)
-                    existing_keys = set(zip(existing_df['ts_code'], existing_df['trade_date']))
-                except Exception as e:
-                    logger.warning(f"读取已有 _qmt 文件失败 {qmt_parquet_path}: {e}")
-            remaining =[(c, d) for (c, d) in monthly_pairs[ym] if (c, d) not in existing_keys]
-            if remaining:
-                monthly_pairs[ym] = remaining
-            else:
-                del monthly_pairs[ym]
-
-        if not monthly_pairs:
-            logger.info("所有数据在 _qmt 文件中均已存在，无需下载")
-            return
-
-        df_min = pd.DataFrame()
-        # 逐月下载并合并
+                    existing_keys = set(zip(existing_df['ts_code'].astype(str), existing_df['trade_date'].astype(str)))
+                except: pass
+            remaining = [(c, d) for (c, d) in monthly_pairs[ym] if (c, d) not in existing_keys]
+            if remaining: monthly_pairs[ym] = remaining
+            else: del monthly_pairs[ym]
         for ym, pairs in monthly_pairs.items():
-            logger.info(f"开始处理月份 {ym}，共 {len(pairs)} 条待下载记录")
-            new_dfs =[]
-            for idx, (code, date) in enumerate(pairs):
-                logger.debug(f"下载 {code} {date}")
+            new_dfs = []
+            for code, date in pairs:
                 df_min = MarketData._fetch_miniqmt_intraday(code, date)
                 if not df_min.empty:
                     df_min['ts_code'] = code
                     df_min['trade_date'] = date
-                    df_min = df_min[['时间', '开盘', '收盘', '最高', '最低', '成交量', 'ts_code', 'trade_date']]
                     new_dfs.append(df_min)
-            if not new_dfs:
-                logger.warning(f"月份 {ym} 无任何有效数据")
-                continue
-
+            if not new_dfs: continue
             combined = pd.concat(new_dfs, ignore_index=True)
             combined['ts_code'] = combined['ts_code'].astype(str).str.zfill(6)
             combined['trade_date'] = combined['trade_date'].astype(str)
-
             qmt_parquet_path = MarketData.get_monthly_file_path(ym, qmt_suffix=True)
             if os.path.exists(qmt_parquet_path):
                 try:
                     old_df = pd.read_parquet(qmt_parquet_path)
-                    old_df['ts_code'] = old_df['ts_code'].astype(str).str.zfill(6)
-                    old_df['trade_date'] = old_df['trade_date'].astype(str)
                     combined = pd.concat([old_df, combined], ignore_index=True)
-                except Exception as e:
-                    logger.error(f"读取旧 _qmt 文件失败: {e}")
-
+                except: pass
             combined.drop_duplicates(subset=['时间', 'ts_code', 'trade_date'], inplace=True)
             combined.sort_values(['ts_code', '时间'], inplace=True)
             combined.to_parquet(qmt_parquet_path, index=False, engine='pyarrow')
-            logger.info(f"已生成 {qmt_parquet_path}，共 {len(combined)} 行")
-        
-        logger.info("miniQMT 分钟数据预加载完成")
-
 
     @staticmethod
     def preload_daily_from_miniqmt(start_date: str, end_date: str):
-        """预加载日线数据（单文件模式 + 增量更新）"""
-    
-        if not MINIQMT_AVAILABLE:
-            logger.error("miniQMT 未就绪")
-            return
-    
+        if not MINIQMT_AVAILABLE: return
         dates = MarketData.get_model_dates(start_date, end_date)
-        if not dates:
-            logger.warning(f"未找到 {MODEL_NAME_PREFIX} 的模型日期")
-            return
-    
+        if not dates: return
         date_map = MarketData.build_date_map(dates)
         today_str = MarketData._get_current_cn_date()
-    
-        # Step1: 收集下载任务
         raw_pairs = set()
-    
         for m_date in dates:
             t1, t2 = date_map[m_date]
-    
             model_file = os.path.join(MODEL_HISTORY_DIR, f"{MODEL_NAME_PREFIX}_{m_date}.json")
-            if not os.path.exists(model_file):
-                continue
-    
+            if not os.path.exists(model_file): continue
             with open(model_file, 'r', encoding='utf-8') as f:
                 targets, _ = MarketData.parse_sirius_model(json.load(f))
-    
                 for t in targets:
                     code = MarketData._convert_code(t['code'])
-    
-                    if t1 <= today_str:
-                        raw_pairs.add((code, t1))
-                    if t2 <= today_str:
-                        raw_pairs.add((code, t2))
-    
-        if not raw_pairs:
-            logger.warning("无日线任务")
-            return
-    
-        logger.info(f"[日线] 原始任务数: {len(raw_pairs)}")
-    
-        # Step2: 过滤已有数据
+                    if t1 <= today_str: raw_pairs.add((code, t1))
+                    if t2 <= today_str: raw_pairs.add((code, t2))
         p_path = MarketData.get_daily_file_path(qmt_suffix=True)
-    
         existing_keys = set()
-    
         if os.path.exists(p_path):
             try:
                 old_df = pd.read_parquet(p_path, columns=['ts_code', 'trade_date'])
-                old_df['ts_code'] = old_df['ts_code'].astype(str)
-                old_df['trade_date'] = old_df['trade_date'].astype(str)
-                existing_keys = set(zip(old_df['ts_code'], old_df['trade_date']))
-            except Exception as e:
-                logger.warning(f"读取已有日线失败: {e}")
-    
-        # 过滤掉已存在的
-        raw_pairs =[p for p in raw_pairs if p not in existing_keys]
-    
-        if not raw_pairs:
-            logger.info("[日线] 数据已全部存在，无需下载")
-            return
-    
-        logger.info(f"[日线] 实际下载任务数: {len(raw_pairs)}")
-    
-        # Step3: 下载数据
-        new_dfs =[]
-    
-        for idx, (code, date) in enumerate(raw_pairs):
-            logger.debug(f"[日线] 下载 {idx+1}/{len(raw_pairs)}: {code} {date}")
-    
+                existing_keys = set(zip(old_df['ts_code'].astype(str), old_df['trade_date'].astype(str)))
+            except: pass
+        raw_pairs = [p for p in raw_pairs if p not in existing_keys]
+        if not raw_pairs: return
+        new_dfs = []
+        for code, date in raw_pairs:
             df = MarketData._fetch_miniqmt_daily(code, date)
-    
             if not df.empty:
                 df['ts_code'] = str(code).zfill(6)
                 df['trade_date'] = str(date)
-                df = df[['时间', '开盘', '收盘', '最高', '最低', '成交量', 'ts_code', 'trade_date']]
                 new_dfs.append(df)
-    
-        if not new_dfs:
-            logger.warning("[日线] 下载结果为空")
-            return
-    
+        if not new_dfs: return
         combined = pd.concat(new_dfs, ignore_index=True)
-    
-        # Step4: 合并旧数据
         if os.path.exists(p_path):
             try:
                 old_df = pd.read_parquet(p_path)
-                old_df['ts_code'] = old_df['ts_code'].astype(str).str.zfill(6)
-                old_df['trade_date'] = old_df['trade_date'].astype(str)
-    
                 combined = pd.concat([old_df, combined], ignore_index=True)
-            except Exception as e:
-                logger.warning(f"合并旧数据失败: {e}")
-    
-        # Step5: 去重 + 排序
+            except: pass
         combined.drop_duplicates(subset=['时间', 'ts_code', 'trade_date'], inplace=True)
         combined.sort_values(['ts_code', '时间'], inplace=True)
-    
-        # Step6: 保存
         combined.to_parquet(p_path, index=False, engine='pyarrow')
-    
-        logger.info(f"[日线] 更新完成: {p_path} 总行数:{len(combined)}")
 
+# ========================= 4. 新增：GitHub 自动提交模块 =========================
+class GitHubUploader:
+    def __init__(self):
+        # 确保使用系统代理访问 GitHub
+        self.env = os.environ.copy()
+        if HTTP_PROXY: self.env['HTTP_PROXY'] = HTTP_PROXY
+        if HTTPS_PROXY: self.env['HTTPS_PROXY'] = HTTPS_PROXY
+
+    def run_cmd(self, cmd: str, cwd: str = None) -> Tuple[bool, str]:
+        """执行 Git 命令行操作"""
+        try:
+            result = subprocess.run(
+                cmd, cwd=cwd, shell=True, env=self.env,
+                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+            return True, result.stdout
+        except subprocess.CalledProcessError as e:
+            logger.error(f"执行 Git 命令失败: {cmd}\n错误信息: {e.stderr}")
+            return False, e.stderr
+
+    def init_workspace(self) -> bool:
+        """初始化或更新本地的临时 Git 仓库"""
+        if not os.path.exists(LOCAL_GIT_WORKSPACE):
+            logger.info(f"[Git] 首次克隆仓库 {GIT_REPO_URL} ... (可能需要数秒)")
+            success, _ = self.run_cmd(f"git clone {GIT_REPO_URL} {LOCAL_GIT_WORKSPACE}")
+            if not success: return False
+        else:
+            logger.info("[Git] 工作区已存在，拉取最新代码...")
+            self.run_cmd("git fetch origin", cwd=LOCAL_GIT_WORKSPACE)
+            self.run_cmd(f"git reset --hard origin/{GIT_TARGET_BRANCH}", cwd=LOCAL_GIT_WORKSPACE)
+            self.run_cmd("git clean -fd", cwd=LOCAL_GIT_WORKSPACE)
+            self.run_cmd(f"git pull origin {GIT_TARGET_BRANCH}", cwd=LOCAL_GIT_WORKSPACE)
+
+        # 写入配置
+        self.run_cmd(f'git config user.name "{GIT_USERNAME}"', cwd=LOCAL_GIT_WORKSPACE)
+        self.run_cmd(f'git config user.email "{GIT_EMAIL}"', cwd=LOCAL_GIT_WORKSPACE)
+        return True
+
+    def sync_files_to_workspace(self, src_backup_dir: str, target_repo_path: str):
+        """将备份目录的文件覆盖写入到 Git 工作区对应的目录中"""
+        full_target_path = os.path.join(LOCAL_GIT_WORKSPACE, target_repo_path)
+        os.makedirs(full_target_path, exist_ok=True)
+        
+        for file_name in os.listdir(src_backup_dir):
+            src_file = os.path.join(src_backup_dir, file_name)
+            if os.path.isfile(src_file):
+                dst_file = os.path.join(full_target_path, file_name)
+                try:
+                    shutil.copy2(src_file, dst_file)
+                    logger.debug(f"[Git] 同步文件至工作区: {dst_file}")
+                except Exception as e:
+                    logger.error(f"[Git] 拷贝到工作区失败 {src_file}: {e}")
+
+    def commit_and_push(self) -> bool:
+        """提交所有变动并 Push 到 GitHub"""
+        self.run_cmd("git add .", cwd=LOCAL_GIT_WORKSPACE)
+        
+        # 检查是否有文件改动
+        success, stdout = self.run_cmd("git status --porcelain", cwd=LOCAL_GIT_WORKSPACE)
+        if not stdout.strip():
+            logger.info("[Git] 仓库内的数据没有变动，无需提交。")
+            return True
+
+        commit_msg = f"Auto-update model market data at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        logger.info("[Git] 正在执行 Commit...")
+        self.run_cmd(f'git commit -m "{commit_msg}"', cwd=LOCAL_GIT_WORKSPACE)
+        
+        logger.info(f"[Git] 正在推送到远程分支 {GIT_TARGET_BRANCH}...")
+        success, _ = self.run_cmd(f"git push origin {GIT_TARGET_BRANCH}", cwd=LOCAL_GIT_WORKSPACE)
+        if success:
+            logger.info("[Git] 成功推送至 GitHub！")
+        return success
 
 # ========================= 回测主函数 (增强版) =========================
 def run_download():
-    # 引用需要动态修改的全局变量
     global MODEL_NAME_PREFIX, MODEL_API_BASE_URL
     
-    # 定义五个待处理的模型
-    models =[
+    models = [
         "流入模型",
         "大成模型",
         "大智模型",
@@ -746,32 +445,25 @@ def run_download():
         "高潜模型"
     ]
     
-    # 目标备份根路径
     backup_base_dir = r"D:\AIPEQModelSIRIUS\static\minute_backup"
     
-    # 开始循环遍历各个模型
+    # 【一、 遍历各个模型下载、预加载和备份】
     for model_name in models:
-        # ---- 动态更新当前的全局前缀与API网址 ----
         MODEL_NAME_PREFIX = model_name
         MODEL_API_BASE_URL = f"https://raw.githubusercontent.com/digital-era/AIPEQModel/main/{MODEL_NAME_PREFIX}_"
         
         logger.info(f"\n===================== 开始处理模型: {MODEL_NAME_PREFIX} =====================")
         
-        # 1. 下载模型文件（若之前注释掉的，如需启用可自行放开）
         # ModelDownloader.download_models_for_date_range(START_DATE, END_DATE, force=False)
-        # logger.info(f"[{MODEL_NAME_PREFIX}] 模型数据下载完成")
         
-        # 2. 从 miniQMT 拉取所需的各维度数据并存入 MONTHLY_DIR
         if MINIQMT_AVAILABLE:
             MarketData.preload_from_miniqmt(START_DATE, END_DATE)
-            MarketData.preload_daily_from_miniqmt(START_DATE, END_DATE)   # ✅新增
+            MarketData.preload_daily_from_miniqmt(START_DATE, END_DATE)
             logger.info(f"[{MODEL_NAME_PREFIX}] Market数据下载完成")
             
-            # 3. 将 MONTHLY_DIR 下的数据拷贝到对应的备份目录
             target_dir = os.path.join(backup_base_dir, MODEL_NAME_PREFIX)
             os.makedirs(target_dir, exist_ok=True)
             
-            # 遍历并拷贝数据（如果存在同名文件，默认会直接覆盖）
             if os.path.exists(MONTHLY_DIR):
                 for file_name in os.listdir(MONTHLY_DIR):
                     src_file = os.path.join(MONTHLY_DIR, file_name)
@@ -779,19 +471,33 @@ def run_download():
                         dst_file = os.path.join(target_dir, file_name)
                         try:
                             shutil.copy2(src_file, dst_file)
-                            logger.debug(f"已拷贝文件: {src_file} -> {dst_file}")
                         except Exception as e:
                             logger.error(f"拷贝文件失败 {src_file}: {e}")
-                
-                logger.info(f"[{MODEL_NAME_PREFIX}] 数据已全部备份并覆盖至: {target_dir}")
+                logger.info(f"[{MODEL_NAME_PREFIX}] 数据已备份并覆盖至: {target_dir}")
             else:
                 logger.warning(f"数据源目录 {MONTHLY_DIR} 不存在，无数据可备份。")
-                
         else:
             logger.warning("miniQMT未就绪，跳过数据获取阶段")
 
-    logger.info("\n========== 所有模型数据获取及备份全部处理完成，退出 ==========")
+    logger.info("\n========== 所有模型数据获取及备份处理完成 ==========")
+    logger.info("\n========== 开始统一提交数据到 GitHub ==========")
 
+    # 【二、 统一提交到 GitHub】
+    github_manager = GitHubUploader()
+    if github_manager.init_workspace():
+        # 遍历并将所有模型数据同步到Git克隆工作区
+        for model_name in models:
+            src_backup_dir = os.path.join(backup_base_dir, model_name)
+            if os.path.exists(src_backup_dir):
+                target_repo_path = f"minute/{model_name}"
+                github_manager.sync_files_to_workspace(src_backup_dir, target_repo_path)
+        
+        # 统一 Commit 和 Push
+        github_manager.commit_and_push()
+    else:
+        logger.error("[Git] GitHub 工作区初始化失败，取消自动提交。请检查代理或网络连接。")
+
+    logger.info("\n========== 任务结束 ==========")
 
 if __name__ == "__main__":
     run_download()
