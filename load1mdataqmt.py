@@ -58,7 +58,8 @@ GIT_USERNAME = "digital-era"
 GIT_EMAIL = "digital_era@sina.com"
 GIT_REPO_NAME = "AIPEQModel"
 GIT_TARGET_BRANCH = "main"
-GIT_REPO_URL = f"https://github.com/{GIT_USERNAME}/{GIT_REPO_NAME}.git"
+# ✅ 修改为 SSH 地址，实现免密提交
+GIT_REPO_URL = f"git@github.com:{GIT_USERNAME}/{GIT_REPO_NAME}.git"
 LOCAL_GIT_WORKSPACE = "./Github_AIPEQModel_Workspace" # 临时克隆目录
 
 # 创建目录
@@ -367,15 +368,21 @@ class GitHubUploader:
         self.env = os.environ.copy()
         if HTTP_PROXY: self.env['HTTP_PROXY'] = HTTP_PROXY
         if HTTPS_PROXY: self.env['HTTPS_PROXY'] = HTTPS_PROXY
+        # ✅ 新增：自动接受 GitHub 的 SSH host key，避免首次连接时交互式确认卡住脚本
+        self.env['GIT_SSH_COMMAND'] = 'ssh -o StrictHostKeyChecking=accept-new'
 
-    def run_cmd(self, cmd: str, cwd: str = None) -> Tuple[bool, str]:
-        """执行 Git 命令行操作"""
+    def run_cmd(self, cmd: str, cwd: str = None, timeout: int = 60) -> Tuple[bool, str]:
+        """执行 Git 命令行操作，增加超时防止密码提示导致无限卡住"""
         try:
             result = subprocess.run(
                 cmd, cwd=cwd, shell=True, env=self.env,
-                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                timeout=timeout
             )
             return True, result.stdout
+        except subprocess.TimeoutExpired:
+            logger.error(f"执行 Git 命令超时: {cmd} (>{timeout}秒)，可能被密码提示卡住")
+            return False, "Timeout"
         except subprocess.CalledProcessError as e:
             logger.error(f"执行 Git 命令失败: {cmd}\n错误信息: {e.stderr}")
             return False, e.stderr
@@ -425,12 +432,17 @@ class GitHubUploader:
 
         commit_msg = f"Auto-update model market data at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         logger.info("[Git] 正在执行 Commit...")
-        self.run_cmd(f'git commit -m "{commit_msg}"', cwd=LOCAL_GIT_WORKSPACE)
+        success, _ = self.run_cmd(f'git commit -m "{commit_msg}"', cwd=LOCAL_GIT_WORKSPACE)
+        if not success:
+            logger.error("[Git] Commit 失败，取消 Push")
+            return False
         
         logger.info(f"[Git] 正在推送到远程分支 {GIT_TARGET_BRANCH}...")
-        success, _ = self.run_cmd(f"git push origin {GIT_TARGET_BRANCH}", cwd=LOCAL_GIT_WORKSPACE)
+        success, stderr = self.run_cmd(f"git push origin {GIT_TARGET_BRANCH}", cwd=LOCAL_GIT_WORKSPACE)
         if success:
             logger.info("[Git] 成功推送至 GitHub！")
+        else:
+            logger.error(f"[Git] Push 失败: {stderr}")
         return success
 
 # ========================= 回测主函数 (增强版) =========================
