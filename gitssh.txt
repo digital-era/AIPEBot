@@ -1,0 +1,70 @@
+https://github.com/clash-verge-rev/clash-verge-rev/blob/dev/README.md
+
+ Git 的官方 Windows 版本下载页面:
+https://git-scm.com/install/windows
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+
+[Environment]::SetEnvironmentVariable("TERM", "cygwin", "User")
+
+在 Windows 服务器上创建/修改 vim 配置文件：
+# 打开或创建 vim 配置文件
+vim $HOME/_vimrc
+
+
+set fileencodings=utf-8,gbk,gb2312,gb18030
+set encoding=utf-8
+set fileencoding=utf-8
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+:: 第1步：下载 Git 安装包（带进度条，能看到状态）
+powershell -Command "Invoke-WebRequest -Uri 'https://github.com/git-for-windows/git/releases/download/v2.45.1.windows.1/Git-2.45.1-64-bit.exe' -OutFile \"$env:TEMP\GitInstaller.exe\""
+
+:: 第2步：静默安装（无需管理员权限，安装到用户目录）
+powershell -Command "Start-Process -FilePath \"$env:TEMP\GitInstaller.exe\" -ArgumentList '/VERYSILENT /NORESTART /NOCANCEL /SP- /COMPONENTS=icons,ext\reg\shellhere,assoc,assoc_sh' -Wait"
+
+
+:: 断开当前 SSH 会话，重新连接（让环境变量生效）
+
+:: 然后验证 Git 是否安装成功
+git --version
+
+
+:: 1. 创建 .ssh 目录
+mkdir "%USERPROFILE%\.ssh"
+
+:: 2. 生成 SSH Key
+ssh-keygen -t ed25519 -C "digital_era@sina.com" -f "%USERPROFILE%\.ssh\id_ed25519" -N ""
+
+:: 3. 查看公钥
+type "%USERPROFILE%\.ssh\id_ed25519.pub"
+
+
+cat ~/.ssh/id_ed25519.pub
+
+复制输出的全部内容（以 ssh-ed25519 开头），然后：
+打开手机浏览器，登录 GitHub
+进入 Settings → SSH and GPG keys → New SSH key
+Title 填 Windows-Local-PC，Key 粘贴刚才复制的内容
+点击 Add SSH key
+
+
+#预先建立与 GitHub 的 SSH 信任关系，消除首次连接时的交互式确认，确保你的自动化脚本不会被卡住。
+ssh -o StrictHostKeyChecking=accept-new -T git@github.com
+
+
+#删掉旧仓库，让脚本"从零开始"用 SSH 地址重新克隆，避免新旧地址冲突。
+cd %USERPROFILE%
+
+rmdir /s /q Github_AIPEQModel_Workspace
+
+-------------------------------------------------------------------------------------------------------
+pip install flask pandas
+
+
+#在 Windows 上启用 Funnel
+# 登录并启用 Funnel（需要 tailnet admin 权限）
+tailscale funnel --bg 8787
+
+
+#获取公网访问地址
+https://<你的机器名>.<你的-tailnet>.ts.net/
+https://win-qmt.example.ts.net/query?code=600519&type=price
