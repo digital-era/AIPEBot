@@ -68,3 +68,7 @@ tailscale funnel --bg 8787
 #获取公网访问地址
 https://<你的机器名>.<你的-tailnet>.ts.net/
 https://win-qmt.example.ts.net/query?code=600519&type=price
+
+手动Clone：
+cd ~
+git clone git@github.com:digital-era/AIPEQModel.git Github_AIPEQModel_Workspace
