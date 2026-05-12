@@ -173,10 +173,10 @@ def fetch_intraday(qmt_code, orig_code):
 
 
 # ==============================
-# 路由入口（与原 query.js 接口对齐）
+# 路由入口（与原 querylocal.js 接口对齐）
 # ==============================
-@app.route("/query")
-def query():
+@app.route("/querylocal")
+def querylocal():
     code = request.args.get("code")
     type_ = request.args.get("type")
 
