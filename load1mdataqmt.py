@@ -36,7 +36,7 @@ except ImportError:
 
 # ========================= 1. 配置 =========================
 START_DATE = "2026-04-30"
-END_DATE = "2026-05-11"
+END_DATE = "2026-05-12"
 
 MODEL_HISTORY_DIR = "./historical_models"
 MONTHLY_DIR = "./monthly_data"
