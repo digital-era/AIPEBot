@@ -69,6 +69,15 @@ tailscale funnel --bg 8787
 https://<你的机器名>.<你的-tailnet>.ts.net/
 https://win-qmt.example.ts.net/query?code=600519&type=price
 
+E:\AIPEQModelSIRIUS\static>tailscale funnel --bg 8787
+Available on the internet:
+
+https://desktop-6hirfc0.tail8fcfdf.ts.net/
+|-- proxy http://127.0.0.1:8787
+
+Funnel started and running in the background.
+To disable the proxy, run: tailscale funnel --https=443 off
+
 手动Clone：
 cd ~
 git clone git@github.com:digital-era/AIPEQModel.git Github_AIPEQModel_Workspace
