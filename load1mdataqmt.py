@@ -35,7 +35,7 @@ except ImportError:
     logger.warning("miniQMT 未安装或无法导入，preload_from_miniqmt 将不可用")
 
 # ========================= 1. 配置 =========================
-START_DATE = "2026-04-30"
+START_DATE = "2025-09-12"
 END_DATE = "2026-05-12"
 
 MODEL_HISTORY_DIR = "./Github_AIPEQModel_Workspace"
