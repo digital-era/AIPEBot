@@ -38,7 +38,7 @@ except ImportError:
 START_DATE = "2026-04-30"
 END_DATE = "2026-05-12"
 
-MODEL_HISTORY_DIR = "./historical_models"
+MODEL_HISTORY_DIR = "./Github_AIPEQModel_Workspace"
 MONTHLY_DIR = "./monthly_data"
 DATA_CACHE_DIR = "./min_data_cache"
 
