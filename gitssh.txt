@@ -81,3 +81,7 @@ To disable the proxy, run: tailscale funnel --https=443 off
 手动Clone：
 cd ~
 git clone git@github.com:digital-era/AIPEQModel.git Github_AIPEQModel_Workspace
+
+
+SSH连接中断继续在后台执行：
+nohup python your_script.py > output.log 2>&1 &
