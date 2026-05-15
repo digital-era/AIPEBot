@@ -58,6 +58,8 @@ rmdir /s /q Github_AIPEQModel_Workspace
 
 -------------------------------------------------------------------------------------------------------
 pip install flask pandas
+pip install CORS
+pip install flask_cors
 
 
 #在 Windows 上启用 Funnel
@@ -73,6 +75,15 @@ E:\AIPEQModelSIRIUS\static>tailscale funnel --bg 8787
 Available on the internet:
 
 https://desktop-6hirfc0.tail8fcfdf.ts.net/
+|-- proxy http://127.0.0.1:8787
+
+Funnel started and running in the background.
+To disable the proxy, run: tailscale funnel --https=443 off
+
+D:\>tailscale funnel --bg 8787
+Available on the internet:
+
+https://desktop-ush34i0.tail8fcfdf.ts.net/
 |-- proxy http://127.0.0.1:8787
 
 Funnel started and running in the background.
