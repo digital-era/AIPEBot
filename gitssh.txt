@@ -89,9 +89,14 @@ https://desktop-ush34i0.tail8fcfdf.ts.net/
 Funnel started and running in the background.
 To disable the proxy, run: tailscale funnel --https=443 off
 
-手动Clone：
-cd ~
+Powershell或者gitbash手动Clone：
+cd d:\AIPEQModelSIRIUS\static
 git clone git@github.com:digital-era/AIPEQModel.git Github_AIPEQModel_Workspace
+
+如果您之前已经克隆过，现在只是想获取最新版本，不需要重新克隆，只需要在目录内执行“拉取”命令：
+cd Github_AIPEQModel_Workspace
+拉取最新代码：
+git pull
 
 -------------------------------------------------------------------------------------------------
 启动远程python服务：
