@@ -93,6 +93,50 @@ To disable the proxy, run: tailscale funnel --https=443 off
 cd ~
 git clone git@github.com:digital-era/AIPEQModel.git Github_AIPEQModel_Workspace
 
+-------------------------------------------------------------------------------------------------
+启动远程python服务：
+在 Windows 系统中通过 SSH（如 JuiceSSH）进行远程管理时，因为 SSH 终端关闭时会自动清理其派生的子进程，所以需要使用特殊的方法来终止和后台运行服务。
+以下是针对您这两个问题的具体操作步骤：
+问题 1：如何通过 SSH 把原来的服务停掉
+由于您之前是在普通的 CMD 窗口运行的，最安全且精准的方法是根据端口号（8787）找到进程 ID (PID)，然后将其终止。
+查找占用 8787 端口的进程 PID：
+在 SSH 终端中输入以下命令：
 
+netstat -ano | findstr LISTENING      --所有
+netstat -ano | findstr :8787
+
+输出结果最后的一列数字就是 PID（例如 12345），输出格式类似下面这样：
+TCP    0.0.0.0:8787           0.0.0.0:0              LISTENING       12345
+强制结束该进程（请将 12345 替换为您实际查到的 PID 数字）：
+taskkill /f /pid 12345
+注：如果您确定电脑上没有其他正在运行的 Python 程序，也可以直接使用一键结束所有 Python 进程的命令（较粗暴）：
+taskkill /f /im python.exe
+
+问题 2：如何重新启动并保障 SSH 断开后服务不停止
+建议使用以下整条命令。
+请将 C:\path\to\your\folder 替换为您代码所在的实际绝对路径：
+
+powershell -Command "Start-Process cmd -ArgumentList '/c python qmt_api_server.py > server.log 2>&1' -WorkingDirectory 'E:\AIPEQModelSIRIUS\static' -WindowStyle Hidden"
+
+
+在命令行中，2>&1 的作用是将“标准错误输出”重定向到“标准输出”中。
+简单来说，它的目的是：把程序运行过程中的所有正常日志和报错信息，合并输出到同一个日志文件中。
+
+启动后的验证方法：
+命令执行后会返回类似 Process created with ID 6789 的信息。
+此时您可以在手机上输入以下命令，确认服务是否成功在后台监听：
+netstat -ano | findstr :8787
+如果能看到 LISTENING 状态，说明服务已成功启动。此时您可以放心关闭 JuiceSSH 客户端。如果服务后续出现异常，也可以通过查看工作目录下的 server.log 来排查原因。
+
+
+如果不设置 -WindowStyle Hidden 参数（或者使用默认的 Normal 模式），主要会有以下几个影响：
+1. SSH 断开连接后，Python 程序可能会自动关闭（最主要的影响）
+如果不隐藏窗口，启动的进程通常会与当前的 SSH 会话（虚拟控制台）保持关联。一旦您关闭手机上的 JuiceSSH 客户端或网络断开，Windows 系统在清理该 SSH 会话时，大概率会顺带强制终止这个 Python 进程，导致您的服务停止运行。
+2. 远程电脑屏幕上会弹出“黑窗口”
+如果这台远程 Windows 电脑此时有人正在使用，或者连着显示器，桌面上会突然弹出一个黑色的 CMD 命令行窗口。
+这可能会干扰远程电脑前的用户。
+如果电脑前的人不小心手动关闭了这个弹出的窗口，您的 Python 服务就会直接终止。
+3. SSH 客户端可能会被“卡住”
+在某些情况下，因为进程窗口没有被隐藏和脱离，JuiceSSH 终端可能会认为命令尚未执行完毕，导致界面一直停留在“执行中”的状态，无法退回提示符（无法输入下一条命令），直到您手动按 Ctrl + C 中断。
 SSH连接中断继续在后台执行：
 nohup python your_script.py > output.log 2>&1 &
