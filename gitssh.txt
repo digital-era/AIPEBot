@@ -123,6 +123,8 @@ taskkill /f /im python.exe
 
 powershell -Command "Start-Process cmd -ArgumentList '/c python qmt_api_server.py > server.log 2>&1' -WorkingDirectory 'E:\AIPEQModelSIRIUS\static' -WindowStyle Hidden"
 
+#不依赖SSH连接
+powershell -Command "Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine='cmd.exe /c cd /d E:\AIPEQModelSIRIUS\static && python qmt_api_server.py > server.log 2>&1'}"
 
 在命令行中，2>&1 的作用是将“标准错误输出”重定向到“标准输出”中。
 简单来说，它的目的是：把程序运行过程中的所有正常日志和报错信息，合并输出到同一个日志文件中。
