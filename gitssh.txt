@@ -32,7 +32,11 @@ git --version
 mkdir "%USERPROFILE%\.ssh"
 
 :: 2. 生成 SSH Key
+#Git Bash环境
 ssh-keygen -t ed25519 -C "digital_era@sina.com" -f "%USERPROFILE%\.ssh\id_ed25519" -N ""
+
+#Powershell环境
+ssh-keygen -t ed25519 -C "digital_era@sina.com" -f "$env:USERPROFILE\.ssh\id_ed25519" -N '""'
 
 :: 3. 查看公钥
 type "%USERPROFILE%\.ssh\id_ed25519.pub"
