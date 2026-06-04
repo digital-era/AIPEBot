@@ -1,13 +1,18 @@
 
 ### 1. 地平线机器人（Horizon Robotics）
+https://wecruit.hotjob.cn/SU64819a4f2f9d2433ba8b043a/pb/social.html#/
+
 - **常用投递邮箱**：**dream@horizon.ai**（校园/早期招聘中常见）。
 - 其他信息：公司有官方招聘微官网（horizon-campus.hotjob.cn 等平台），建议结合在线申请系统投递。HR 联系方式可能因岗位而异。
 
 ### 2. DeepSeek（深度求索）
-- **常用投递邮箱**：
-  - **hr@deepseek.com**（HR 通用邮箱）。
+- https://app.mokahr.com/social-recruitment/high-flyer/140576#/
+- https://www.high-flyer.cn/join/
+
+- - **常用投递邮箱**：
+_  - **hr@deepseek.com**（HR 通用邮箱）。
   - 部分招聘专员邮箱：如 yao.xu@deepseek.com、ning.wang@deepseek.com、zy.wu@deepseek.com（具体岗位投递时可参考）。
-- 其他信息：招聘主要通过 MokaHR 等平台（app.mokahr.com），部分岗位接受直接邮箱投递，建议在邮件主题注明岗位+姓名。
+- 其他信息：招聘主要通过 MokaHR 等平台（app.mokahr.com），部分岗位接受直接邮箱投递，建议在邮件主题注明岗位+姓名。_
 
 ### 3. KIMI（Moonshot AI / 月之暗面）
 - **常用投递邮箱**：**hr@moonshot.ai**。
