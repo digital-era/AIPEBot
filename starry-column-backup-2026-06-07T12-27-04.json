@@ -1,0 +1,190 @@
+{
+  "_schema": 2,
+  "_exportedAt": 1780835224470,
+  "_version": "1.0.0",
+  "cards": [
+    {
+      "id": "galaxy_shine",
+      "name": {
+        "zh-CN": "星光闪耀",
+        "en": "Shining Stars"
+      },
+      "contribution": {
+        "zh-CN": "北极星在决定历史走向、技术质变、或是思想涌现的非凡成就。",
+        "en": "The North Star extraordinary achievement that shapes the course of history, drives a qualitative shift in technology, or sparks the emergence of new ideas.."
+      },
+      "field": {
+        "zh-CN": "名人传记",
+        "en": "Biographies of distinguished figures"
+      },
+      "remarks": {
+        "zh-CN": "展现杰出人物的思维模型与灵魂抉择，提供高维精神共鸣。",
+        "en": "Showcasing the mental models and pivotal soul-defining choices of extraordinary figures, while offering a profound spiritual resonance."
+      },
+      "configurable": true,
+      "builtIn": false,
+      "type": "fusion",
+      "experts": [
+        "stefan_zweig",
+        "romain_rolland",
+        "plutarch",
+        "robert_caro",
+        "walter_isaacson",
+        "sima_qian",
+        "su_dongpo",
+        "suetonius",
+        "frank_mclynn"
+      ],
+      "systemPromptBuilder": "buildFusionSystemPrompt",
+      "userInputMode": "rawQuestion",
+      "fusionStrategy": {
+        "mode": "synthesis",
+        "description": {
+          "zh-CN": "（已配置）",
+          "en": "(Configured)"
+        }
+      }
+    },
+    {
+      "id": "civilization_journey",
+      "name": {
+        "zh-CN": "穿越文明",
+        "en": "Traversing Civilizations"
+      },
+      "contribution": {
+        "zh-CN": "全球文明发展史，打破时空的线性隔阂",
+        "en": "Cross-temporal intellectual dialogue, exploring key nodes of human civilization evolution."
+      },
+      "field": {
+        "zh-CN": "全球文明史",
+        "en": "History of Global Civilization"
+      },
+      "remarks": {
+        "zh-CN": "鉴往知今，察今预未来。",
+        "en": "Learn from the past to understand the present; know the present to foresee the future."
+      },
+      "configurable": true,
+      "builtIn": false,
+      "type": "fusion",
+      "experts": [
+        "chen_hao_wu",
+        "stefan_zweig",
+        "edward_gibbon",
+        "lars_tvede",
+        "shi_zhan"
+      ],
+      "systemPromptBuilder": "buildFusionSystemPrompt",
+      "userInputMode": "rawQuestion",
+      "fusionStrategy": {
+        "mode": "synthesis",
+        "description": {
+          "zh-CN": "（已配置）",
+          "en": "(Configured)"
+        }
+      }
+    },
+    {
+      "id": "business_Insights",
+      "name": {
+        "zh-CN": "商海论道",
+        "en": "Insights on Investment"
+      },
+      "contribution": {
+        "zh-CN": "商业决策与金融投资观点交锋。",
+        "en": "A Clash of Perspectives on Financial Investment and Business Decision-Making."
+      },
+      "field": {
+        "zh-CN": "商业洞见",
+        "en": "Business Insights"
+      },
+      "remarks": {
+        "zh-CN": "人类的远见绝非商品。",
+        "en": "Human foresight is by no means a commodity."
+      },
+      "configurable": true,
+      "builtIn": false,
+      "type": "fusion",
+      "experts": [
+        "warren_buffett",
+        "ray_dalio",
+        "larry_fink",
+        "john_bogle",
+        "george_soros",
+        "james_simons",
+        "vinod_khosla",
+        "cathie_wood",
+        "mary_meeker",
+        "duan_yongping",
+        "li_lu",
+        "jeremy_allaire",
+        "changpeng_zhao",
+        "luke_gromen"
+      ],
+      "systemPromptBuilder": "buildFusionSystemPrompt",
+      "userInputMode": "rawQuestion",
+      "fusionStrategy": {
+        "mode": "debate",
+        "description": {
+          "zh-CN": "（已配置）",
+          "en": "(Configured)"
+        }
+      }
+    },
+    {
+      "id": "technology_wave",
+      "name": {
+        "zh-CN": "科技观潮",
+        "en": "Riding the Wave of Technology"
+      },
+      "contribution": {
+        "zh-CN": "AI、新能源、先进制造、太空探索和量子计算的发展、演进和渗透。",
+        "en": "The development, evolution, and permeation of AI, new energy, advanced manufacturing, space exploration, and quantum computing."
+      },
+      "field": {
+        "zh-CN": "技术发展迭代",
+        "en": "Technological development and iteration"
+      },
+      "remarks": {
+        "zh-CN": "技术浪潮变迁和对社会的影响。",
+        "en": "Shifts in the wave of technological change and their impact on society."
+      },
+      "configurable": true,
+      "builtIn": false,
+      "type": "fusion",
+      "experts": [
+        "elon_musk",
+        "demis_hassabis",
+        "jensen_huang",
+        "sam_altman",
+        "dario_amodei",
+        "boris_cherny",
+        "steve_jobs",
+        "jeff_bezos",
+        "geoffrey_hinton",
+        "ilya_sutskever",
+        "ray_kurzweil",
+        "kevin_kelly",
+        "albert_einstein",
+        "erwin_schrodinger",
+        "james_clerk_maxwell",
+        "jeff_dean",
+        "richard_feynman",
+        "john_von_neumann",
+        "hartmut_neven",
+        "roger_penrose",
+        "shi_yigong",
+        "satoshi_nakamoto",
+        "vitalik_buterin"
+      ],
+      "systemPromptBuilder": "buildFusionSystemPrompt",
+      "userInputMode": "rawQuestion",
+      "fusionStrategy": {
+        "mode": "debate",
+        "description": {
+          "zh-CN": "（已配置）",
+          "en": "(Configured)"
+        }
+      }
+    }
+  ]
+}
