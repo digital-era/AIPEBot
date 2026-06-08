@@ -9,7 +9,6 @@ userInputMode: "rawQuestion"    // 输入模式：rawQuestion | generatedPrompt
 普鲁塔克
 罗伯特·卡罗
 沃尔特·艾萨克森
-司马迁
 苏东坡
 苏埃托尼乌斯
 弗兰克·麦克林
@@ -55,7 +54,14 @@ Array(8)
 斯蒂芬·茨威格
 爱德华·吉本
 拉尔斯·特韦德
+雅各布·布克哈特
+吉尔·莱波雷
+尤瓦尔·诺亚·赫拉利
 施展
+易中天
+司马迁
+司马光
+孟森
 
 
 experts
