@@ -9,6 +9,7 @@ userInputMode: "rawQuestion"    // 输入模式：rawQuestion | generatedPrompt
 普鲁塔克
 罗伯特·卡罗
 沃尔特·艾萨克森
+司马迁 
 苏东坡
 苏埃托尼乌斯
 弗兰克·麦克林
