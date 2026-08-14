@@ -38,7 +38,7 @@ except ImportError:
 class Config:
     """真实交易配置（请根据实际情况修改）"""
     QMT_PATH = r"D:\国金证券QMT交易端\userdata_mini"
-    ACCOUNT_ID = "8886036261"
+    ACCOUNT_ID = ""
 
     MODEL_URL = "https://raw.githubusercontent.com/digital-era/AIPEQModel/main/流入模型_New.json"
     LOCAL_MODEL_CACHE = "流入模型_New.json.cache"
