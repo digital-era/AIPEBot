@@ -1,0 +1,46 @@
+1、powershell执行：
+Win + R 这样会以管理员身份启动 PowerShelCtrl + Shift + Enter
+wsl.exe --install
+未安装适用于 Linux 的 Windows 子系统，可通过运行 “wsl.exe --install” 进行安装。
+wsl --status
+检查 WSL是否安装成功
+
+进入：
+username@computer:~$
+uname -a
+应该看到 Linux。
+
+2、在 WSL 中安装 uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source $HOME/.local/bin/env
+uv --version
+
+
+3、安装 Colab CLI
+uvx --from google-colab-cli colab --help
+
+4、创建 Colab Runtime&挂载 Google Drive&执行 TalkToNSMgmt.ipynb
+
+创建 Colab Runtime
+uvx --from google-colab-cli colab new -s talktonsmgmt
+或者为了方便，可以先建立 alias
+alias colab='uvx --from google-colab-cli colab'
+colab --help
+colab new -s talktonsmgmt	
+
+挂载 Google Drive
+colab drivemount -s talktonsmgmt
+
+执行 TalkToNSMgmt.ipynb
+cd /mnt/e/AIPEQModelSIRIUS
+colab exec -s talktonsmgmt -f TalkToNSMgmt.ipynb
+
+完整流程就是：
+colab new -s talktonsmgmt
+
+colab drivemount -s talktonsmgmt
+
+cd /mnt/e/AIPEQModelSIRIUS
+
+colab exec -s talktonsmgmt -f TalkToNSMgmt.ipynb
+
