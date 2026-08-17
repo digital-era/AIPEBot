@@ -1,19 +1,61 @@
 1、powershell执行：
 Win + R 这样会以管理员身份启动 PowerShelCtrl + Shift + Enter
-wsl.exe --install
-未安装适用于 Linux 的 Windows 子系统，可通过运行 “wsl.exe --install” 进行安装。
-wsl --status
-检查 WSL是否安装成功
+  x1@DESKTOP-6HIRFC0
+wsl
 
-进入：
-username@computer:~$
-uname -a
-应该看到 Linux。
+cd /mnt/e/AIPEQModelSIRIUS
+
+source .colab-env/bin/activate
+
+colab new -s talktonsmgmt
+
+colab drivemount -s talktonsmgmt
+
+# tmux new -s talktonsmgmt
+
+colab exec -s talktonsmgmt -f TalkToNSMgmt.ipynb
+
+# Ctrl+B
+  D
+
+#重新打开 JuiceSSH，重新看到运行状态
+# tmux attach -t talktonsmgmt
+
+#查看有哪些 tmux：
+# tmux ls
+
+
+
+#如果你根本不需要实时看过程
+nohup colab exec -s talktonsmgmt -f TalkToNSMgmt.ipynb > talktonsmgmt.log 2>&1 &
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 2、在 WSL 中安装 uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env
 uv --version
+
+
+wsl --status
+检查 WSL是否安装成功
+进入：
+username@computer:~$
+uname -x1
+应该看到 Linux。
+
 
 
 3、安装 Colab CLI
