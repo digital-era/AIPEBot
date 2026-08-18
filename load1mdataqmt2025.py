@@ -457,7 +457,7 @@ def run_download():
         "高潜模型"
     ]
     
-    backup_base_dir = r"D:\AIPEQModelSIRIUS\static\minute_backup_2025"
+    backup_base_dir = r"E:\AIPEQModelSIRIUS\static\minute_backup_2025"
     
     # 【一、 遍历各个模型下载、预加载和备份】
     for model_name in models:
