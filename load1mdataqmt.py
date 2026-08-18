@@ -35,8 +35,8 @@ except ImportError:
     logger.warning("miniQMT 未安装或无法导入，preload_from_miniqmt 将不可用")
 
 # ========================= 1. 配置 =========================
-START_DATE = "2025-09-12"
-END_DATE = "2026-05-12"
+START_DATE = "2026-07-30"
+END_DATE = "2026-08-14"
 
 MODEL_HISTORY_DIR = "./Github_AIPEQModel_Workspace"
 MONTHLY_DIR = "./monthly_data"
@@ -457,7 +457,7 @@ def run_download():
         "高潜模型"
     ]
     
-    backup_base_dir = r"D:\AIPEQModelSIRIUS\static\minute_backup"
+    backup_base_dir = r"E:\AIPEQModelSIRIUS\static\minute_backup"
     
     # 【一、 遍历各个模型下载、预加载和备份】
     for model_name in models:
@@ -488,6 +488,12 @@ def run_download():
                 logger.info(f"[{MODEL_NAME_PREFIX}] 数据已备份并覆盖至: {target_dir}")
             else:
                 logger.warning(f"数据源目录 {MONTHLY_DIR} 不存在，无数据可备份。")
+            
+            # ✅ 方案B：备份完成后清空临时目录，避免影响下一个模型
+            if os.path.exists(MONTHLY_DIR):
+                shutil.rmtree(MONTHLY_DIR)
+                os.makedirs(MONTHLY_DIR, exist_ok=True)
+                logger.info(f"[{MODEL_NAME_PREFIX}] 临时数据目录已清空，准备处理下一个模型。")
         else:
             logger.warning("miniQMT未就绪，跳过数据获取阶段")
 
