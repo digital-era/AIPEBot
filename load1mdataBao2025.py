@@ -57,6 +57,7 @@ LOCAL_GIT_WORKSPACE = "/content/AIPEQModel2025"
 
 # 从环境变量读取 Personal Access Token（必须在运行前设置）
 GIT_TOKEN = ""
+
 if not GIT_TOKEN:
     logger.warning("⚠️ 环境变量 GIT_TOKEN 未设置，GitHub 推送可能失败！")
     logger.warning("请在 Colab 中运行: os.environ['GIT_TOKEN'] = '你的token'")
@@ -647,9 +648,9 @@ def run_download():
     models = [
         "流入模型",
         "大成模型",
-        "大智模型",
-        "低波稳健模型",
-        "高潜模型"
+        #"大智模型",
+        #"低波稳健模型",
+        #"高潜模型"
     ]
     
     backup_base_dir = r"/content/minute_backup_2025"
@@ -665,7 +666,8 @@ def run_download():
         
         if BAOSTOCK_AVAILABLE:
             MarketData.preload_from_baostock(START_DATE, END_DATE)
-            MarketData.preload_daily_from_baostock(START_DATE, END_DATE)
+            ##先下载下面Daily
+            ##MarketData.preload_daily_from_baostock(START_DATE, END_DATE)
             logger.info(f"[{MODEL_NAME_PREFIX}] 数据下载完成")
             
             target_dir = os.path.join(backup_base_dir, MODEL_NAME_PREFIX)
