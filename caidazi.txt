@@ -1,2 +1,4 @@
 按照 https://github.com/caidazi/dafa-skills/blob/main/README.md 安装 caidazi-skills。
 使用以下CAIDAZI_API_KEY完成配置：cdz_live_h6edzDjNkkWPc16mGCvqtzs8dbNcbNOa
+
+https://qmtmcp.aivibeinvestment.com
