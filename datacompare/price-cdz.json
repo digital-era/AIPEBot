@@ -1,0 +1,161 @@
+[
+    "HK00700",
+    "002782",
+    "000725",
+    "601857",
+    "HK09618",
+    "688087",
+    "000999",
+    "300750",
+    "HK00100",
+    "300446",
+    "601878",
+    "002415",
+    "HK02513",
+    "002056",
+    "601825",
+    "601088",
+    "002384",
+    "002594",
+    "000776",
+    "HK09988"
+]
+
+
+{
+    "300446": {
+        "name": "300446",
+        "latestPrice": 13.08,
+        "changePercent": -0.909091,
+        "changeAmount": -0.11999999999999922,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "300750": {
+        "name": "300750",
+        "latestPrice": 368.33,
+        "changePercent": -1.252011,
+        "changeAmount": -4.670000000000016,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "601088": {
+        "name": "601088",
+        "latestPrice": 47.61,
+        "changePercent": -0.39749,
+        "changeAmount": -0.18999999999999773,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "601825": {
+        "name": "601825",
+        "latestPrice": 8.83,
+        "changePercent": -2.323009,
+        "changeAmount": -0.20999999999999908,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "601857": {
+        "name": "601857",
+        "latestPrice": 11.24,
+        "changePercent": 1.444043,
+        "changeAmount": 0.16000000000000014,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "601878": {
+        "name": "601878",
+        "latestPrice": 9.37,
+        "changePercent": -0.10661,
+        "changeAmount": -0.010000000000001563,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "688087": {
+        "name": "688087",
+        "latestPrice": 38.39,
+        "changePercent": -0.05207,
+        "changeAmount": -0.01999999999999602,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "002782": {
+        "name": "002782",
+        "latestPrice": 15.11,
+        "changePercent": -0.592105,
+        "changeAmount": -0.08999999999999986,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "000725": {
+        "name": "000725",
+        "latestPrice": 5.92,
+        "changePercent": -0.3367,
+        "changeAmount": -0.020000000000000462,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "000999": {
+        "name": "000999",
+        "latestPrice": 24.39,
+        "changePercent": -1.01461,
+        "changeAmount": -0.25,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "002415": {
+        "name": "002415",
+        "latestPrice": 35.12,
+        "changePercent": -0.481723,
+        "changeAmount": -0.1700000000000017,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "002056": {
+        "name": "002056",
+        "latestPrice": 21.3,
+        "changePercent": -1.480111,
+        "changeAmount": -0.3200000000000003,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "002384": {
+        "name": "002384",
+        "latestPrice": 195.69,
+        "changePercent": -2.447657,
+        "changeAmount": -4.909999999999997,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "002594": {
+        "name": "002594",
+        "latestPrice": 92.27,
+        "changePercent": 0.852552,
+        "changeAmount": 0.7800000000000011,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    },
+    "000776": {
+        "name": "000776",
+        "latestPrice": 21.43,
+        "changePercent": -0.741084,
+        "changeAmount": -0.16000000000000014,
+        "source": "caidazi_mcp_cf",
+        "currency": "CNY",
+        "dailydata": null
+    }
+}
