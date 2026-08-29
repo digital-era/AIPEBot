@@ -1,0 +1,206 @@
+[
+    "HK00700",
+    "002782",
+    "000725",
+    "601857",
+    "HK09618",
+    "688087",
+    "000999",
+    "300750",
+    "HK00100",
+    "300446",
+    "601878",
+    "002415",
+    "HK02513",
+    "002056",
+    "601825",
+    "601088",
+    "002384",
+    "002594",
+    "000776",
+    "HK09988"
+]
+
+
+{
+    "000725": {
+        "changeAmount": -0.020000000000000462,
+        "changePercent": -0.3367,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 5.92,
+        "name": "\u4eac\u4e1c\u65b9\uff21",
+        "source": "miniqmt"
+    },
+    "000776": {
+        "changeAmount": -0.16000000000000014,
+        "changePercent": -0.741084,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 21.43,
+        "name": "\u5e7f\u53d1\u8bc1\u5238",
+        "source": "miniqmt"
+    },
+    "000999": {
+        "changeAmount": -0.25,
+        "changePercent": -1.01461,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 24.39,
+        "name": "\u534e\u6da6\u4e09\u4e5d",
+        "source": "miniqmt"
+    },
+    "002056": {
+        "changeAmount": -0.3200000000000003,
+        "changePercent": -1.480111,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 21.3,
+        "name": "\u6a2a\u5e97\u4e1c\u78c1",
+        "source": "miniqmt"
+    },
+    "002384": {
+        "changeAmount": -4.97999999999999,
+        "changePercent": -2.482552,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 195.62,
+        "name": "\u4e1c\u5c71\u7cbe\u5bc6",
+        "source": "miniqmt"
+    },
+    "002415": {
+        "changeAmount": -0.18999999999999773,
+        "changePercent": -0.538396,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 35.1,
+        "name": "\u6d77\u5eb7\u5a01\u89c6",
+        "source": "miniqmt"
+    },
+    "002594": {
+        "changeAmount": 0.8300000000000125,
+        "changePercent": 0.907203,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 92.32000000000001,
+        "name": "\u6bd4\u4e9a\u8fea",
+        "source": "miniqmt"
+    },
+    "002782": {
+        "changeAmount": -0.08999999999999986,
+        "changePercent": -0.592105,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 15.11,
+        "name": "\u53ef\u7acb\u514b",
+        "source": "miniqmt"
+    },
+    "300446": {
+        "changeAmount": -0.11999999999999922,
+        "changePercent": -0.909091,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 13.08,
+        "name": "\u822a\u5929\u667a\u9020",
+        "source": "miniqmt"
+    },
+    "300750": {
+        "changeAmount": -4.5,
+        "changePercent": -1.206434,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 368.5,
+        "name": "\u5b81\u5fb7\u65f6\u4ee3",
+        "source": "miniqmt"
+    },
+    "601088": {
+        "changeAmount": -0.1699999999999946,
+        "changePercent": -0.355649,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 47.63,
+        "name": "\u4e2d\u56fd\u795e\u534e",
+        "source": "miniqmt"
+    },
+    "601825": {
+        "changeAmount": -0.20999999999999908,
+        "changePercent": -2.323009,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 8.83,
+        "name": "\u6caa\u519c\u5546\u884c",
+        "source": "miniqmt"
+    },
+    "601857": {
+        "changeAmount": 0.15000000000000036,
+        "changePercent": 1.353791,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 11.23,
+        "name": "\u4e2d\u56fd\u77f3\u6cb9",
+        "source": "miniqmt"
+    },
+    "601878": {
+        "changeAmount": -0.009999999999999787,
+        "changePercent": -0.10661,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 9.370000000000001,
+        "name": "\u6d59\u5546\u8bc1\u5238",
+        "source": "miniqmt"
+    },
+    "688087": {
+        "changeAmount": -0.01999999999999602,
+        "changePercent": -0.05207,
+        "currency": "CNY",
+        "dailydata": null,
+        "latestPrice": 38.39,
+        "name": "\u82f1\u79d1\u518d\u751f",
+        "source": "miniqmt"
+    },
+    "HK00100": {
+        "changeAmount": -14.200000000000045,
+        "changePercent": -4.513668,
+        "currency": "HKD",
+        "dailydata": null,
+        "latestPrice": 300.4,
+        "name": "MINIMAX-W",
+        "source": "miniqmt"
+    },
+    "HK00700": {
+        "changeAmount": 7.399999999999977,
+        "changePercent": 1.652523,
+        "currency": "HKD",
+        "dailydata": null,
+        "latestPrice": 455.2,
+        "name": "\u817e\u8baf\u63a7\u80a1",
+        "source": "miniqmt"
+    },
+    "HK02513": {
+        "changeAmount": -70,
+        "changePercent": -6.034483,
+        "currency": "HKD",
+        "dailydata": null,
+        "latestPrice": 1090,
+        "name": "\u667a\u8c31",
+        "source": "miniqmt"
+    },
+    "HK09618": {
+        "changeAmount": -1.5999999999999943,
+        "changePercent": -1.427297,
+        "currency": "HKD",
+        "dailydata": null,
+        "latestPrice": 110.5,
+        "name": "\u4eac\u4e1c\u96c6\u56e2\uff0d\uff33\uff37",
+        "source": "miniqmt"
+    },
+    "HK09988": {
+        "changeAmount": -1.5999999999999943,
+        "changePercent": -1.385281,
+        "currency": "HKD",
+        "dailydata": null,
+        "latestPrice": 113.9,
+        "name": "\u963f\u91cc\u5df4\u5df4\uff0d\uff37",
+        "source": "miniqmt"
+    }
+}
