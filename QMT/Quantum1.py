@@ -14,7 +14,18 @@ TRADE_AMOUNT = 100000
 ACC_ID = '你的资金账号'          # 必须与策略绑定的资金账号一致
 BUY_TIME_HMS = '09:31:00'        # T1 开盘买入时点
 SELL_TIME_HMS = '14:50:00'       # T5 收盘卖出 / 每日风控检查时点
+LOG_FILE = r"D:/AIPEBotLog/qmtlog.log"
 
+# ---------- 日志函数 ----------
+def log(msg):
+    now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    line = '[%s] %s' % (now_str, msg)
+    print(line)
+    try:
+        with open(LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(line + '\n')
+    except Exception as e:
+        print('写日志失败: %s' % e)
 
 # ---------- 工具函数 ----------
 def _norm_date(x):
@@ -51,7 +62,7 @@ def load_last_plan():
             if y > max_year:
                 max_year, max_file = y, fname
     if max_file is None:
-        print('未找到交易计划文件')
+        log('未找到交易计划文件')
         return None
     with open(os.path.join(JSON_DIR, max_file), 'r', encoding='utf-8') as f:
         plan = json.load(f)
@@ -78,7 +89,7 @@ def get_closes(ContextInfo, code, count):
             df = data[code].dropna()
             return [float(x) for x in df['close'].tolist()]
     except Exception as e:
-        print('获取行情失败 %s: %s' % (code, e))
+        log('获取行情失败 %s: %s' % (code, e))
     return []
 
 
@@ -96,7 +107,7 @@ def get_current_price(ContextInfo, code):
             if p:
                 return float(p)
     except Exception as e:
-        print('获取实时价失败 %s: %s' % (code, e))
+        log('获取实时价失败 %s: %s' % (code, e))
     closes = get_closes(ContextInfo, code, 5)
     return closes[-1] if closes else 0.0
 
@@ -110,7 +121,7 @@ def get_trading_days(ContextInfo, start, end):
             df = data['000001.SH'].dropna()
             return [_norm_date(x) for x in df.index.tolist()]
     except Exception as e:
-        print('获取交易日历失败: %s' % e)
+        log('获取交易日历失败: %s' % e)
     return []
 
 
@@ -122,7 +133,7 @@ def order_stock(ContextInfo, code, volume, side):
     prType = 4 if side == 'buy' else 6
     passorder(op, 1101, ACC_ID, code, prType, 0, int(volume), 2,
               'strategy_' + side, ContextInfo)
-    print('%s %s %d股 [对手价]' % (side, code, volume))
+    log('%s %s %d股 [对手价]' % (side, code, volume))
 
 
 def get_positions(ContextInfo):
@@ -149,12 +160,12 @@ def init(ContextInfo):
 
     last_plan = load_last_plan()
     if last_plan is None:
-        print('无交易计划，策略空转')
+        log('无交易计划，策略空转')
         ContextInfo.finished = True
         return
     T0 = last_plan['调仓日期']
     ContextInfo.plan_stocks = parse_stocks(last_plan)      # 注意：不能用stocks（内置属性）
-    print('最后调仓日期T0: %s, 股票数: %d' % (T0, len(ContextInfo.plan_stocks)))
+    log('最后调仓日期T0: %s, 股票数: %d' % (T0, len(ContextInfo.plan_stocks)))
 
     start = T0.replace('-', '')
     end = (datetime.strptime(T0, '%Y-%m-%d') + timedelta(days=30)).strftime('%Y%m%d')
@@ -162,7 +173,7 @@ def init(ContextInfo):
     if days and days[0] == T0:
         days = days[1:]
     if len(days) < 5:
-        print('交易日不足，策略退出')
+        log('交易日不足，策略退出')
         ContextInfo.finished = True
         return
     ContextInfo.T1 = days[0]
@@ -170,11 +181,11 @@ def init(ContextInfo):
     ContextInfo.plan_days = set(days[:5])                  # T1~T5交易日白名单
     ContextInfo.is_bought = False
     ContextInfo.finished = False
-    print('T1=%s(开盘买入)  T5=%s(收盘卖出)' % (ContextInfo.T1, ContextInfo.T5))
+    log('T1=%s(开盘买入)  T5=%s(收盘卖出)' % (ContextInfo.T1, ContextInfo.T5))
 
     today = datetime.now().strftime('%Y-%m-%d')
     if today > ContextInfo.T5:
-        print('已超过T5，无需执行，策略退出')
+        log('已超过T5，无需执行，策略退出')
         ContextInfo.finished = True
         return
 
@@ -200,7 +211,7 @@ def daily_job(ContextInfo):
 
     # ===== T1 开盘买入 =====
     if today == ContextInfo.T1 and not ContextInfo.is_bought:
-        print('买入日 %s 开盘执行' % ContextInfo.T1)
+        log('买入日 %s 开盘执行' % ContextInfo.T1)
         for code, vol in get_positions(ContextInfo).items():
             order_stock(ContextInfo, code, vol, 'sell')    # 清仓旧持仓
         time.sleep(3)   # 等待卖单回报，卖出资金可用于当日买入
@@ -220,7 +231,7 @@ def daily_job(ContextInfo):
     if ContextInfo.is_bought and today == ContextInfo.T5 and not is_morning:
         for code, vol in get_positions(ContextInfo).items():
             order_stock(ContextInfo, code, vol, 'sell')
-        print('卖出日 %s 收盘清仓，策略结束' % ContextInfo.T5)
+        log('卖出日 %s 收盘清仓，策略结束' % ContextInfo.T5)
         ContextInfo.finished = True
         return
 
@@ -233,4 +244,4 @@ def daily_job(ContextInfo):
                 cur = closes[-1]
                 if cur < ma20:
                     order_stock(ContextInfo, code, vol, 'sell')
-                    print('风控卖出 %s (现价%.3f < MA20 %.3f)' % (code, cur, ma20))
+                    log('风控卖出 %s (现价%.3f < MA20 %.3f)' % (code, cur, ma20))
