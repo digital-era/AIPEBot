@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: gbk -*-
 # 国金QMT 内置Python 策略模型（标准QMT客户端框架，不依赖miniQMT）
 # ====== 增强版：VWAP拉回分批买入 / 冲高分批卖出 / 尾盘强制兜底 ======
 import os
