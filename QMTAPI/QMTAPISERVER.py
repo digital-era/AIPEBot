@@ -1,5 +1,5 @@
 # QMTAPISERVER.py
-# Windows 本地 Flask 服务 - 大QMT数据服务桥接版（最终稳定版）
+# Windows 本地 Flask 服务 - 大QMT数据服务桥接版（支持名称 + 港股）
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import datetime
@@ -20,11 +20,11 @@ CORS(app, origins=[
 ])
 
 # ==============================
-# 配置 (路径必须与QMT策略完全一致)
+# 配置
 # ==============================
 QMT_COMMAND_FILE = r"E:\AIPEQModelSIRIUS\QMTAPI\qmt_command.txt"
 QMT_RESPONSE_FILE = r"E:\AIPEQModelSIRIUS\QMTAPI\qmt_response.txt"
-REQUEST_TIMEOUT = 25          # 建议 20~30 秒
+REQUEST_TIMEOUT = 25
 MAX_RETRIES = 2
 RETRY_DELAY = 1.5
 
@@ -36,21 +36,29 @@ response_lock = threading.Lock()
 current_request_id = None
 
 # ==============================
-# 代码转换
+# 代码转换（增强港股支持）
 # ==============================
 def convert_code(code: str) -> Tuple[str, str]:
     code_upper = code.upper().strip()
+    
+    # 港股
     if code_upper.startswith("HK"):
-        pure = code_upper.replace("HK", "")
-        return f"{pure}.HK", "HKD"
-    elif re.match(r"^(60|68|51|56|58|55|900)", code):
-        return f"{code}.SH", "CNY"
-    elif re.match(r"^(00|30|15|200)", code):
-        return f"{code}.SZ", "CNY"
-    elif re.match(r"^(4|8)", code):
-        return f"{code}.BJ", "CNY"
-    else:
-        return None, None
+        pure = code_upper[2:].lstrip('0') or '0'
+        return f"{pure.zfill(5)}.HK", "HKD"
+    
+    # 纯数字港股（4~5位）
+    if code_upper.isdigit() and 4 <= len(code_upper) <= 5:
+        return f"{code_upper.zfill(5)}.HK", "HKD"
+    
+    # A股
+    if re.match(r"^(60|68|51|56|58|55|900)", code_upper):
+        return f"{code_upper}.SH", "CNY"
+    elif re.match(r"^(00|30|15|200)", code_upper):
+        return f"{code_upper}.SZ", "CNY"
+    elif re.match(r"^(4|8)", code_upper):
+        return f"{code_upper}.BJ", "CNY"
+    
+    return None, None
 
 def json_response(data: Dict, status: int = 200):
     response = jsonify(data)
@@ -60,7 +68,7 @@ def json_response(data: Dict, status: int = 200):
     return response
 
 # ==============================
-# QMT 通信（核心修复）
+# QMT 通信
 # ==============================
 def send_qmt_request(request_data: Dict) -> Any:
     global response_data, response_event, last_response_time, current_request_id
@@ -70,7 +78,7 @@ def send_qmt_request(request_data: Dict) -> Any:
 
     for attempt in range(MAX_RETRIES):
         try:
-            # 清理旧响应（防止读到脏数据）
+            # 清理旧响应
             for f in [QMT_RESPONSE_FILE, QMT_RESPONSE_FILE + '.notify']:
                 if os.path.exists(f):
                     try:
@@ -108,10 +116,8 @@ def send_qmt_request(request_data: Dict) -> Any:
                     if data is None:
                         continue
 
-                    # 校验 request_id
                     if isinstance(data, dict) and data.get('request_id') == request_id:
                         last_response_time = time.time()
-                        # 自动解包 data 字段
                         if 'data' in data:
                             return data['data']
                         return data
@@ -149,24 +155,27 @@ def response_monitor():
                         response_event.set()
                         last_response_time = time.time()
 
-                    # 清理文件
-                    try:
-                        os.remove(QMT_RESPONSE_FILE)
-                        os.remove(notify_file)
-                    except Exception as e:
-                        print(f"[WARN] 清理响应文件失败: {e}")
+                    # 延迟一点再删除，降低权限冲突
+                    time.sleep(0.05)
+
+                    for f in [QMT_RESPONSE_FILE, notify_file]:
+                        try:
+                            if os.path.exists(f):
+                                os.remove(f)
+                        except PermissionError:
+                            pass  # Windows 常见，忽略
+                        except Exception as e:
+                            print(f"[WARN] 清理文件失败 {f}: {e}")
 
                     print(f"[MONITOR] 收到响应: {data.get('request_id', 'unknown')} | status={data.get('status')}")
                 except Exception as e:
                     print(f"[WARN] 读取响应失败: {e}")
-                    # 失败也尝试清理，防止死循环
-                    try:
-                        if os.path.exists(QMT_RESPONSE_FILE):
-                            os.remove(QMT_RESPONSE_FILE)
-                        if os.path.exists(notify_file):
-                            os.remove(notify_file)
-                    except:
-                        pass
+                    for f in [QMT_RESPONSE_FILE, notify_file]:
+                        try:
+                            if os.path.exists(f):
+                                os.remove(f)
+                        except:
+                            pass
         except Exception as e:
             print(f"[WARN] response_monitor error: {e}")
         time.sleep(0.08)
@@ -183,7 +192,6 @@ def get_last_trade_date() -> str:
             "params": {"market": "SH", "start_time": "20260101", "end_time": today_str, "count": -1}
         })
         if trading_dates and len(trading_dates) > 0:
-            # QMT 返回的是时间戳（毫秒）或日期字符串，做兼容
             last = trading_dates[-1]
             if isinstance(last, (int, float)):
                 return time.strftime('%Y%m%d', time.localtime(last / 1000 if last > 1e12 else last))
@@ -199,6 +207,7 @@ def fetch_price_single(qmt_code: str, orig_code: str, currency: str) -> Dict:
     try:
         result = send_qmt_request({"function": "get_full_tick", "params": {"stock_codes": [qmt_code]}})
         if not result or qmt_code not in result:
+            print(f"[WARN] get_full_tick 无数据: {qmt_code}")
             return None
 
         tick_data = result[qmt_code]
@@ -207,16 +216,23 @@ def fetch_price_single(qmt_code: str, orig_code: str, currency: str) -> Dict:
         if latest_price is None or prev_close is None:
             return None
 
+        # 增强名称获取
         name = orig_code
         try:
             detail = send_qmt_request({
                 "function": "get_instrument_detail",
                 "params": {"stock_code": qmt_code, "iscomplete": False}
             })
-            if detail and detail.get("InstrumentName"):
-                name = detail["InstrumentName"]
-        except:
-            pass
+            if detail:
+                name = (
+                    detail.get("InstrumentName") or 
+                    detail.get("instrument_name") or 
+                    detail.get("Name") or 
+                    detail.get("name") or 
+                    orig_code
+                )
+        except Exception as e:
+            print(f"[WARN] get name failed for {qmt_code}: {e}")
 
         change_amount = latest_price - prev_close
         change_percent = round((change_amount / prev_close) * 100, 6) if prev_close else 0.0
@@ -235,12 +251,11 @@ def fetch_price_single(qmt_code: str, orig_code: str, currency: str) -> Dict:
 
 def fetch_intraday_single(qmt_code: str, orig_code: str, trade_date: str, prev_close: float) -> List[Dict]:
     try:
-        # 先下载
         send_qmt_request({
             "function": "download_history_data",
             "params": {"stock_code": qmt_code, "period": "1m", "start_time": trade_date, "end_time": trade_date}
         })
-        time.sleep(0.3)  # 给一点下载时间
+        time.sleep(0.3)
 
         result = send_qmt_request({
             "function": "get_market_data_ex",
@@ -300,26 +315,35 @@ def fetch_price_batch(codes_info: List[Tuple[str, str, str]]) -> Dict[str, Dict]
         result = send_qmt_request({"function": "get_full_tick", "params": {"stock_codes": qmt_codes}})
         if not result:
             return {}
+        
         results = {}
         for orig_code, qmt_code, currency in codes_info:
             tick_data = result.get(qmt_code)
             if not tick_data:
+                print(f"[WARN] batch tick 无数据: {qmt_code}")
                 continue
             latest_price = tick_data.get("lastPrice")
             prev_close = tick_data.get("lastClose")
             if latest_price is None or prev_close is None:
                 continue
 
+            # 增强名称获取
             name = orig_code
             try:
                 detail = send_qmt_request({
                     "function": "get_instrument_detail",
                     "params": {"stock_code": qmt_code, "iscomplete": False}
                 })
-                if detail and detail.get("InstrumentName"):
-                    name = detail["InstrumentName"]
-            except:
-                pass
+                if detail:
+                    name = (
+                        detail.get("InstrumentName") or 
+                        detail.get("instrument_name") or 
+                        detail.get("Name") or 
+                        detail.get("name") or 
+                        orig_code
+                    )
+            except Exception as e:
+                print(f"[WARN] get name failed for {qmt_code}: {e}")
 
             change_amount = latest_price - prev_close
             results[orig_code] = {
@@ -342,7 +366,6 @@ def fetch_intraday_batch(codes_info: List[Tuple[str, str, str]]) -> Dict[str, Li
     if not qmt_codes:
         return {}
 
-    # 批量下载
     for qmt_code in qmt_codes:
         try:
             send_qmt_request({
@@ -367,7 +390,6 @@ def fetch_intraday_batch(codes_info: List[Tuple[str, str, str]]) -> Dict[str, Li
         if not result:
             return {}
 
-        # 获取昨收
         prev_closes = {}
         try:
             tick = send_qmt_request({"function": "get_full_tick", "params": {"stock_codes": qmt_codes}})
@@ -501,14 +523,13 @@ def health_check():
     })
 
 if __name__ == "__main__":
-    # 确保目录存在
     os.makedirs(os.path.dirname(QMT_COMMAND_FILE), exist_ok=True)
 
     monitor_thread = threading.Thread(target=response_monitor, daemon=True)
     monitor_thread.start()
 
     print("=" * 60)
-    print("QMT Local Data Service - Final Stable Version")
+    print("QMT Local Data Service - Final Version (名称+港股支持)")
     print("Listening on http://0.0.0.0:8787")
     print("=" * 60)
     app.run(host="0.0.0.0", port=8787, threaded=True)
