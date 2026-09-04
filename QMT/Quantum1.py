@@ -12,7 +12,7 @@ import pandas as pd
 # ========== 配置 ==========
 JSON_DIR = r"E:/AIPEBot/backtest"
 TRADE_AMOUNT = 20000
-ACC_ID = '8886036261'          # 必须与策略绑定的资金账号一致
+ACC_ID = ''          # 必须与策略绑定的资金账号一致
 BUY_HMS = (13, 40)              # T1 开盘买入时点 (小时, 分钟)
 SELL_HMS = (14, 50)            # T5 收盘卖出 / 每日风控检查时点
 
