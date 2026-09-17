@@ -93,6 +93,13 @@ https://desktop-ush34i0.tail8fcfdf.ts.net/
 Funnel started and running in the background.
 To disable the proxy, run: tailscale funnel --https=443 off
 
+
+Funnel 配置强制同步配置（修复首选）
+让 Tailscale 的控制平面重新获取你本地的 Funnel 配置。确保 Tailscale 已重新开启：tailscale up。
+在电脑上重新运行一次 Funnel 命令，以强制推送配置：
+powershell
+tailscale funnel --bg --https=443 http://127.0.0.1:8787
+
 Powershell或者gitbash手动Clone：
 cd d:\AIPEQModelSIRIUS\static
 git clone git@github.com:digital-era/AIPEQModel.git Github_AIPEQModel_Workspace
