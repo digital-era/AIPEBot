@@ -343,16 +343,15 @@ def handlebar(ContextInfo):
         # ★★★ 关键修复3：立即设置标志位，防止重复下单 ★★★
         G_IS_BOUGHT = True
         
-        # 清仓旧持仓
+        # 打印旧持仓（不做清仓交易）
         positions = get_positions(ContextInfo)
         if positions:
-            print('[HANDLEBAR] 清仓旧持仓...')
+            print('[HANDLEBAR] 当前旧持仓（仅打印，不做交易）:')
             for code, vol in positions.items():
-                order_stock(ContextInfo, code, vol, 'sell')
-            print('[HANDLEBAR] 等待卖单回报3秒...')
-            time.sleep(3)
+                print('[HANDLEBAR] 旧持仓: %s 可用=%d股' % (code, vol))
         else:
-            print('[HANDLEBAR] 无旧持仓需要清仓')
+            print('[HANDLEBAR] 无旧持仓')
+
 
         cash = get_available_cash(ContextInfo)
         total = min(TRADE_AMOUNT, cash)
