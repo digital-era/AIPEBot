@@ -11,7 +11,7 @@ import pandas as pd
 
 # ========== 配置 ==========
 JSON_DIR = r"E:/AIPEBot/backtest"
-TRADE_AMOUNT = 20000
+TRADE_AMOUNT = 100000
 ACC_ID = ''          # 必须与策略绑定的资金账号一致
 
 DIP_PCT = 0.004                  # 买入触发：低于VWAP 0.4%
@@ -388,20 +388,19 @@ def handlebar(ContextInfo):
             print('[HANDLEBAR] T1已完成，跳过')
             return
 
-        # ---- 09:31 清掉旧持仓 ----
+        # ---- 09:31 只打印旧持仓（不清仓、不交易）----
         if not G_CLEARED:
-            print('[HANDLEBAR] 买入日 %s 开盘清旧仓' % today)
-            for code, p in get_positions(ContextInfo).items():
-                if p['can_use'] > 0:
-                    order_stock(ContextInfo, code, p['can_use'], 'sell')
+            print('[HANDLEBAR] 买入日 %s 查看旧持仓（仅打印，不做交易）' % today)
+            positions = get_positions(ContextInfo)
+            if positions:
+                for code, p in positions.items():
+                    print('[HANDLEBAR] 旧持仓: %s 总量=%d 可用=%d' % (
+                        code, p['volume'], p['can_use']))
+            else:
+                print('[HANDLEBAR] 无旧持仓')
             G_CLEARED = True
-            G_CLEAR_TIME = time.time()
             return
 
-        # 等待清仓回报（120秒）
-        if time.time() - G_CLEAR_TIME < 120:
-            print('[HANDLEBAR] 等待清仓回报, 已过%ds' % int(time.time() - G_CLEAR_TIME))
-            return
 
         # ---- 核定买入计划（只核定一次）----
         if not G_BUY_PLAN:
