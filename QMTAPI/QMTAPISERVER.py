@@ -1,5 +1,8 @@
 # QMTAPISERVER.py
 # Windows 本地 Flask 服务 - 大QMT数据服务桥接版（支持名称 + 港股）
+# v2: 新增 ①RPC串行锁（修复并发竞争） ②行情/交易日历缓存（不改变对外行为）
+# v3: ★优化4配套 fetch_intraday_batch 改用 download_history_data_batch
+#     一次RPC批量下载；QMT端未更新时自动回退到原有逐只下载，行为兼容。
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import datetime
@@ -28,12 +31,64 @@ REQUEST_TIMEOUT = 25
 MAX_RETRIES = 2
 RETRY_DELAY = 1.5
 
+# ★优化4新增：批量下载命令的超时（QMT端同步循环下载多只可能耗时较长）
+BATCH_DOWNLOAD_TIMEOUT = 60
+
 # 全局变量 + 锁
 response_event = threading.Event()
 response_data = None
 last_response_time = 0.0
 response_lock = threading.Lock()
 current_request_id = None
+
+# ==============================
+# ★优化3：RPC全局串行锁
+# 作用：多个HTTP请求并发时，防止共享的 response_data/response_event
+#      被互相覆盖导致"id不匹配→重试→超时"的雪崩。
+# 对外行为不变，只是让RPC严格排队。
+# ==============================
+_rpc_lock = threading.Lock()
+
+# ==============================
+# ★优化2：缓存层（透明缓存，不改变对外返回格式）
+#  - TICK_CACHE: 行情缓存，TTL=1秒（QMT定时器粒度即1秒，1秒内重复请求直接命中）
+#  - TRADE_DATE_CACHE: 交易日历缓存，TTL=300秒（日内基本不变）
+# 说明：缓存未命中时走原有 send_qmt_request 流程，返回结构与原版完全一致。
+# ==============================
+TICK_TTL = 1.0
+TRADE_DATE_TTL = 300
+_cache_lock = threading.Lock()
+TICK_CACHE: Dict[str, Tuple[Dict, float]] = {}          # {qmt_code: (data, ts)}
+TRADE_DATE_CACHE = {'date': None, 'ts': 0.0}
+
+
+def _get_full_tick_cached(qmt_codes: List[str]) -> Dict:
+    """带缓存的批量tick。只对过期/缺失的代码发起RPC，命中部分直接返回。
+       返回格式与 send_qmt_request(get_full_tick) 的 data 完全一致。"""
+    now = time.time()
+    fresh: Dict[str, Dict] = {}
+    stale: List[str] = []
+
+    with _cache_lock:
+        for c in qmt_codes:
+            item = TICK_CACHE.get(c)
+            if item and (now - item[1]) < TICK_TTL:
+                fresh[c] = item[0]
+            else:
+                stale.append(c)
+
+    if stale:
+        result = send_qmt_request(
+            {"function": "get_full_tick", "params": {"stock_codes": stale}}
+        )
+        if result:
+            with _cache_lock:
+                now2 = time.time()
+                for c, v in result.items():
+                    TICK_CACHE[c] = (v, now2)
+            fresh.update(result)
+
+    return fresh
 
 # ==============================
 # 代码转换（增强港股支持）
@@ -70,74 +125,89 @@ def json_response(data: Dict, status: int = 200):
 # ==============================
 # QMT 通信
 # ==============================
-def send_qmt_request(request_data: Dict) -> Any:
+def send_qmt_request(request_data: Dict, timeout: float = None) -> Any:
+    """
+    ★优化3说明：函数体逻辑与原版完全一致，仅整体包入 _rpc_lock，
+    保证同一时刻只有一个请求占用命令/响应通道。
+    ★优化4说明：新增可选参数 timeout（默认None时用全局REQUEST_TIMEOUT），
+    供批量下载等长耗时命令单独放宽超时，不影响其他调用方。
+    """
     global response_data, response_event, last_response_time, current_request_id
 
-    request_id = f"req_{int(time.time() * 1000)}"
-    request_data["request_id"] = request_id
+    if timeout is None:
+        timeout = REQUEST_TIMEOUT
 
-    for attempt in range(MAX_RETRIES):
-        try:
-            # 清理旧响应
-            for f in [QMT_RESPONSE_FILE, QMT_RESPONSE_FILE + '.notify']:
-                if os.path.exists(f):
-                    try:
-                        os.remove(f)
-                    except:
-                        pass
+    with _rpc_lock:
+        request_id = f"req_{int(time.time() * 1000)}"
+        request_data["request_id"] = request_id
 
-            with response_lock:
-                response_event.clear()
-                response_data = None
-                current_request_id = request_id
+        for attempt in range(MAX_RETRIES):
+            try:
+                # 清理旧响应
+                for f in [QMT_RESPONSE_FILE, QMT_RESPONSE_FILE + '.notify']:
+                    if os.path.exists(f):
+                        try:
+                            os.remove(f)
+                        except:
+                            pass
 
-            # 写入命令文件
-            with open(QMT_COMMAND_FILE, 'w', encoding='utf-8') as f:
-                json.dump(request_data, f, ensure_ascii=False, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
+                with response_lock:
+                    response_event.clear()
+                    response_data = None
+                    current_request_id = request_id
 
-            # 写入通知文件
-            with open(QMT_COMMAND_FILE + '.notify', 'w', encoding='utf-8') as f:
-                f.write(str(time.time()))
-                f.flush()
-                os.fsync(f.fileno())
+                # 写入命令文件
+                with open(QMT_COMMAND_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(request_data, f, ensure_ascii=False, indent=2)
+                    f.flush()
+                    os.fsync(f.fileno())
 
-            print(f"[DEBUG] 已发送命令: {request_data.get('function')} | id={request_id}")
+                # 写入通知文件
+                with open(QMT_COMMAND_FILE + '.notify', 'w', encoding='utf-8') as f:
+                    f.write(str(time.time()))
+                    f.flush()
+                    os.fsync(f.fileno())
 
-            # 等待响应
-            start_time = time.time()
-            while time.time() - start_time < REQUEST_TIMEOUT:
-                if response_event.wait(timeout=0.15):
-                    with response_lock:
-                        data = response_data
-                        response_event.clear()
+                print(f"[DEBUG] 已发送命令: {request_data.get('function')} | id={request_id}")
 
-                    if data is None:
-                        continue
+                # 等待响应
+                start_time = time.time()
+                while time.time() - start_time < timeout:
+                    if response_event.wait(timeout=0.15):
+                        with response_lock:
+                            data = response_data
+                            response_event.clear()
 
-                    if isinstance(data, dict) and data.get('request_id') == request_id:
-                        last_response_time = time.time()
-                        if 'data' in data:
-                            return data['data']
-                        return data
-                    else:
-                        print(f"[WARN] 收到不匹配的响应 id，期望 {request_id}")
-                        continue
+                        if data is None:
+                            continue
 
-            if attempt < MAX_RETRIES - 1:
-                print(f"[WARN] QMT request timeout, retrying... (attempt {attempt + 1}/{MAX_RETRIES})")
-                time.sleep(RETRY_DELAY)
-            else:
-                raise TimeoutError(f"QMT request timeout: {request_data.get('function')}")
-        except Exception as e:
-            if attempt < MAX_RETRIES - 1:
-                print(f"[ERROR] send_qmt_request failed (attempt {attempt + 1}): {e}")
-                time.sleep(RETRY_DELAY)
-            else:
-                raise
+                        if isinstance(data, dict) and data.get('request_id') == request_id:
+                            last_response_time = time.time()
+                            if 'data' in data:
+                                return data['data']
+                            return data
+                        else:
+                            print(f"[WARN] 收到不匹配的响应 id，期望 {request_id}")
+                            continue
 
-    raise TimeoutError(f"QMT request failed: {request_data.get('function')}")
+                if attempt < MAX_RETRIES - 1:
+                    print(f"[WARN] QMT request timeout, retrying... (attempt {attempt + 1}/{MAX_RETRIES})")
+                    time.sleep(RETRY_DELAY)
+                else:
+                    raise TimeoutError(f"QMT request timeout: {request_data.get('function')}")
+            except TimeoutError:
+                # 超时不属于可恢复异常：最后一次直接抛出
+                if attempt >= MAX_RETRIES - 1:
+                    raise
+                # 未到最后一次则继续重试（走下面的循环逻辑）
+            except Exception as e:
+                if attempt < MAX_RETRIES - 1:
+                    print(f"[ERROR] send_qmt_request failed (attempt {attempt + 1}): {e}")
+                    time.sleep(RETRY_DELAY)
+                else:
+                    raise
+
+        raise TimeoutError(f"QMT request failed: {request_data.get('function')}")
 
 def response_monitor():
     global response_data, response_event, last_response_time
@@ -184,8 +254,14 @@ def response_monitor():
 # 数据获取逻辑
 # ==============================
 def get_last_trade_date() -> str:
-    now = datetime.datetime.now()
-    today_str = now.strftime("%Y%m%d")
+    """★优化2：交易日历缓存300秒，未命中时走原逻辑（行为不变）"""
+    now = time.time()
+    if TRADE_DATE_CACHE['date'] and (now - TRADE_DATE_CACHE['ts']) < TRADE_DATE_TTL:
+        return TRADE_DATE_CACHE['date']
+
+    result_date = None
+    now_dt = datetime.datetime.now()
+    today_str = now_dt.strftime("%Y%m%d")
     try:
         trading_dates = send_qmt_request({
             "function": "get_trading_dates",
@@ -194,18 +270,25 @@ def get_last_trade_date() -> str:
         if trading_dates and len(trading_dates) > 0:
             last = trading_dates[-1]
             if isinstance(last, (int, float)):
-                return time.strftime('%Y%m%d', time.localtime(last / 1000 if last > 1e12 else last))
-            return str(last).replace('-', '')[:8]
+                result_date = time.strftime('%Y%m%d', time.localtime(last / 1000 if last > 1e12 else last))
+            else:
+                result_date = str(last).replace('-', '')[:8]
     except Exception as e:
         print(f"[WARN] get_trading_dates failed: {e}")
 
-    weekday = now.weekday()
-    days_back = 3 if weekday == 0 else (2 if weekday == 6 else 1)
-    return (now - datetime.timedelta(days=days_back)).strftime("%Y%m%d")
+    if result_date is None:
+        weekday = now_dt.weekday()
+        days_back = 3 if weekday == 0 else (2 if weekday == 6 else 1)
+        result_date = (now_dt - datetime.timedelta(days=days_back)).strftime("%Y%m%d")
+
+    with _cache_lock:
+        TRADE_DATE_CACHE['date'] = result_date
+        TRADE_DATE_CACHE['ts'] = time.time()
+    return result_date
 
 def fetch_price_single(qmt_code: str, orig_code: str, currency: str) -> Dict:
     try:
-        result = send_qmt_request({"function": "get_full_tick", "params": {"stock_codes": [qmt_code]}})
+        result = _get_full_tick_cached([qmt_code])
         if not result or qmt_code not in result:
             print(f"[WARN] get_full_tick 无数据: {qmt_code}")
             return None
@@ -216,23 +299,26 @@ def fetch_price_single(qmt_code: str, orig_code: str, currency: str) -> Dict:
         if latest_price is None or prev_close is None:
             return None
 
-        # 增强名称获取
-        name = orig_code
-        try:
-            detail = send_qmt_request({
-                "function": "get_instrument_detail",
-                "params": {"stock_code": qmt_code, "iscomplete": False}
-            })
-            if detail:
-                name = (
-                    detail.get("InstrumentName") or 
-                    detail.get("instrument_name") or 
-                    detail.get("Name") or 
-                    detail.get("name") or 
-                    orig_code
-                )
-        except Exception as e:
-            print(f"[WARN] get name failed for {qmt_code}: {e}")
+        # ★名称获取优化：优先读tick响应中的name字段（零RPC）
+        #   QMT端未更新或名称缺失时，回退到原有get_instrument_detail请求
+        name = tick_data.get("name")
+        if not name:
+            name = orig_code
+            try:
+                detail = send_qmt_request({
+                    "function": "get_instrument_detail",
+                    "params": {"stock_code": qmt_code, "iscomplete": False}
+                })
+                if detail:
+                    name = (
+                        detail.get("InstrumentName") or 
+                        detail.get("instrument_name") or 
+                        detail.get("Name") or 
+                        detail.get("name") or 
+                        orig_code
+                    )
+            except Exception as e:
+                print(f"[WARN] get name failed for {qmt_code}: {e}")
 
         change_amount = latest_price - prev_close
         change_percent = round((change_amount / prev_close) * 100, 6) if prev_close else 0.0
@@ -312,7 +398,7 @@ def fetch_price_batch(codes_info: List[Tuple[str, str, str]]) -> Dict[str, Dict]
     if not qmt_codes:
         return {}
     try:
-        result = send_qmt_request({"function": "get_full_tick", "params": {"stock_codes": qmt_codes}})
+        result = _get_full_tick_cached(qmt_codes)
         if not result:
             return {}
         
@@ -327,23 +413,26 @@ def fetch_price_batch(codes_info: List[Tuple[str, str, str]]) -> Dict[str, Dict]
             if latest_price is None or prev_close is None:
                 continue
 
-            # 增强名称获取
-            name = orig_code
-            try:
-                detail = send_qmt_request({
-                    "function": "get_instrument_detail",
-                    "params": {"stock_code": qmt_code, "iscomplete": False}
-                })
-                if detail:
-                    name = (
-                        detail.get("InstrumentName") or 
-                        detail.get("instrument_name") or 
-                        detail.get("Name") or 
-                        detail.get("name") or 
-                        orig_code
-                    )
-            except Exception as e:
-                print(f"[WARN] get name failed for {qmt_code}: {e}")
+            # ★名称获取优化：优先读tick响应中的name字段（零RPC）
+            #   QMT端未更新或名称缺失时，回退到原有get_instrument_detail请求
+            name = tick_data.get("name")
+            if not name:
+                name = orig_code
+                try:
+                    detail = send_qmt_request({
+                        "function": "get_instrument_detail",
+                        "params": {"stock_code": qmt_code, "iscomplete": False}
+                    })
+                    if detail:
+                        name = (
+                            detail.get("InstrumentName") or 
+                            detail.get("instrument_name") or 
+                            detail.get("Name") or 
+                            detail.get("name") or 
+                            orig_code
+                        )
+                except Exception as e:
+                    print(f"[WARN] get name failed for {qmt_code}: {e}")
 
             change_amount = latest_price - prev_close
             results[orig_code] = {
@@ -361,19 +450,36 @@ def fetch_price_batch(codes_info: List[Tuple[str, str, str]]) -> Dict[str, Dict]
         return {}
 
 def fetch_intraday_batch(codes_info: List[Tuple[str, str, str]]) -> Dict[str, List[Dict]]:
-    trade_date = get_last_trade_date()
+    trade_date = get_last_trade_date()   # ★优化2：已内置缓存
     qmt_codes = [info[1] for info in codes_info if info[1]]
     if not qmt_codes:
         return {}
 
-    for qmt_code in qmt_codes:
+    # ★优化4：优先使用批量下载命令（1次RPC）；
+    #   QMT端未更新（返回Unknown function错误）或批量命令失败时，
+    #   自动回退到原有逐只下载，行为与旧版完全一致。
+    batch_ok = False
+    if qmt_codes:
         try:
             send_qmt_request({
-                "function": "download_history_data",
-                "params": {"stock_code": qmt_code, "period": "1m", "start_time": trade_date, "end_time": trade_date}
-            })
-        except:
-            pass
+                "function": "download_history_data_batch",
+                "params": {"stock_codes": qmt_codes, "period": "1m",
+                           "start_time": trade_date, "end_time": trade_date}
+            }, timeout=BATCH_DOWNLOAD_TIMEOUT)
+            batch_ok = True
+        except Exception as e:
+            print(f"[WARN] download_history_data_batch 不可用/失败，回退到逐只下载: {e}")
+
+    if not batch_ok:
+        # 原有逻辑：逐只下载（N次RPC）
+        for qmt_code in qmt_codes:
+            try:
+                send_qmt_request({
+                    "function": "download_history_data",
+                    "params": {"stock_code": qmt_code, "period": "1m", "start_time": trade_date, "end_time": trade_date}
+                })
+            except:
+                pass
     time.sleep(0.5)
 
     try:
@@ -392,7 +498,8 @@ def fetch_intraday_batch(codes_info: List[Tuple[str, str, str]]) -> Dict[str, Li
 
         prev_closes = {}
         try:
-            tick = send_qmt_request({"function": "get_full_tick", "params": {"stock_codes": qmt_codes}})
+            # ★优化2：改用带缓存版本
+            tick = _get_full_tick_cached(qmt_codes)
             for code in qmt_codes:
                 prev_closes[code] = tick.get(code, {}).get("lastClose")
         except:
@@ -460,7 +567,8 @@ def handle_querylocal_single():
         elif type_ == "intraday":
             prev_close = None
             try:
-                tick = send_qmt_request({"function": "get_full_tick", "params": {"stock_codes": [qmt_code]}})
+                # ★优化2：改用带缓存版本
+                tick = _get_full_tick_cached([qmt_code])
                 prev_close = tick.get(qmt_code, {}).get("lastClose")
             except:
                 pass
