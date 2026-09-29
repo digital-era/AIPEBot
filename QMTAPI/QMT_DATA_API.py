@@ -1,5 +1,10 @@
 # -*- coding: gbk -*-
 # QMT 数据服务策略 - 终极稳定版（支持名称 + 港股 + 1秒定时检测）
+# v2: _get_full_tick 顺带返回股票名称(name字段)，服务端可免掉第二次
+#     get_instrument_detail 请求；原字段与原逻辑完全保留。
+# v3: ★优化4 新增 download_history_data_batch 命令，一次RPC批量下载
+#     多只股票的历史数据，减少 intraday 场景的 N 次文件往返。
+#     原有命令（含单个 download_history_data）完全保留，行为不变。
 import os
 import json
 import time
@@ -45,6 +50,33 @@ def _norm_code(code):
     
     return code
 
+def _get_stock_name(ContextInfo, norm_code):
+    """★新增：取股票名称，兼容不同QMT版本字段；失败时返回 norm_code。
+       逻辑与 _get_instrument_detail 的名称提取保持一致。"""
+    try:
+        # 先尝试不带 iscomplete 的调用（与 _get_instrument_detail 相同的兼容方式）
+        try:
+            detail = ContextInfo.get_instrument_detail(norm_code)
+        except TypeError:
+            try:
+                detail = ContextInfo.get_instrument_detail(norm_code, False)
+            except Exception:
+                return norm_code
+        
+        if not detail:
+            return norm_code
+        
+        return (
+            detail.get('InstrumentName') or
+            detail.get('instrument_name') or
+            detail.get('Name') or
+            detail.get('name') or
+            detail.get('InstrumentID') or
+            norm_code
+        )
+    except Exception:
+        return norm_code
+
 def _write_response(response_data):
     try:
         with open(RESPONSE_FILE, 'w', encoding='utf-8') as f:
@@ -62,6 +94,9 @@ def _write_response(response_data):
         print(f'[ERROR] _write_response: {e}')
 
 def _get_full_tick(ContextInfo, stock_codes):
+    """★优化1：在原字段基础上，每只股票顺带返回 'name' 字段。
+       原有字段（lastPrice/lastClose/high/low/volume/amount）完全不变，
+       服务端可直接用 name，无需再发 get_instrument_detail 请求。"""
     result = {}
     try:
         for code in stock_codes:
@@ -69,7 +104,7 @@ def _get_full_tick(ContextInfo, stock_codes):
             tick = ContextInfo.get_full_tick([norm_code])
             if tick and norm_code in tick:
                 d = tick[norm_code]
-                result[norm_code] = {
+                entry = {
                     'lastPrice': float(d.get('lastPrice', 0) or 0),
                     'lastClose': float(d.get('lastClose', 0) or 0),
                     'high': float(d.get('high', 0) or 0),
@@ -77,6 +112,9 @@ def _get_full_tick(ContextInfo, stock_codes):
                     'volume': float(d.get('volume', 0) or 0),
                     'amount': float(d.get('amount', 0) or 0)
                 }
+                # ★顺带取名称（本地调用，无RPC开销）；失败时回退为代码
+                entry['name'] = _get_stock_name(ContextInfo, norm_code)
+                result[norm_code] = entry
             else:
                 print(f'[WARN] get_full_tick 无数据: {norm_code}')
     except Exception as e:
@@ -129,7 +167,7 @@ def _get_trading_dates(ContextInfo, market, start_time, end_time, count):
         return []
 
 def _get_instrument_detail(ContextInfo, stock_code, iscomplete=False):
-    """兼容不同 QMT 版本的 get_instrument_detail"""
+    """兼容不同 QMT 版本的 get_instrument_detail（保持不变）"""
     try:
         norm_code = _norm_code(stock_code)
         
@@ -167,6 +205,25 @@ def _get_instrument_detail(ContextInfo, stock_code, iscomplete=False):
     except Exception as e:
         print(f'[ERROR] _get_instrument_detail {stock_code}: {e}')
         return {}
+
+def _download_history_data_batch(stock_codes, period, start_time, end_time):
+    """★优化4新增：批量下载历史数据。
+       在QMT端循环调用全局函数 download_history_data，避免服务端
+       为每只股票各发一次RPC（N只股票 = N次文件往返 + N次定时器等待）。
+       返回 {'success': True, 'failed': [{code, error}, ...]}，
+       单只失败不影响其余股票，与单个 download_history_data 的容错语义一致。"""
+    failed = []
+    ok_count = 0
+    for raw in stock_codes:
+        code = _norm_code(raw)
+        try:
+            download_history_data(code, period, start_time, end_time)
+            ok_count += 1
+        except Exception as e:
+            print(f'[WARN] download_history_data 失败（已忽略）: {code}: {e}')
+            failed.append({'code': code, 'error': str(e)})
+    print(f'[DEBUG] 批量下载完成: 成功={ok_count}, 失败={len(failed)}')
+    return {'success': True, 'ok_count': ok_count, 'failed': failed}
 
 def _process_command(ContextInfo, command):
     function = command.get('function')
@@ -214,6 +271,19 @@ def _process_command(ContextInfo, command):
                 print(f'[WARN] download_history_data 失败（已忽略）: {e}')
                 return {'status': 'success', 'data': {'success': False, 'error': str(e)}, 'request_id': req_id}
 
+        # ★优化4新增：批量下载命令
+        elif function == 'download_history_data_batch':
+            try:
+                data = _download_history_data_batch(
+                    params.get('stock_codes', []),
+                    params.get('period', '1d'),
+                    params.get('start_time', ''),
+                    params.get('end_time', '')
+                )
+                return {'status': 'success', 'data': data, 'request_id': req_id}
+            except Exception as e:
+                print(f'[WARN] download_history_data_batch 失败（已忽略）: {e}')
+                return {'status': 'success', 'data': {'success': False, 'error': str(e)}, 'request_id': req_id}
 
         elif function == 'get_instrument_detail':
             data = _get_instrument_detail(
