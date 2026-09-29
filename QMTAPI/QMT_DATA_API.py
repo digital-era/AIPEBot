@@ -202,7 +202,8 @@ def _process_command(ContextInfo, command):
         elif function == 'download_history_data':
             try:
                 code = _norm_code(params.get('stock_code', ''))
-                ContextInfo.download_history_data(
+                # download_history_data 是全局函数，不是 ContextInfo 的方法
+                download_history_data(
                     code,
                     params.get('period', '1d'),
                     params.get('start_time', ''),
@@ -211,8 +212,8 @@ def _process_command(ContextInfo, command):
                 return {'status': 'success', 'data': {'success': True}, 'request_id': req_id}
             except Exception as e:
                 print(f'[WARN] download_history_data 失败（已忽略）: {e}')
-                # 即使下载失败也返回 success，让后续 get_market_data_ex 继续尝试
                 return {'status': 'success', 'data': {'success': False, 'error': str(e)}, 'request_id': req_id}
+
 
         elif function == 'get_instrument_detail':
             data = _get_instrument_detail(
