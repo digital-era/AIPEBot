@@ -1,0 +1,7 @@
+具体标的的实时资金流向数据获取，从如下url： 如https://data.eastmoney.com/zjlx/003006.html或https://data.eastmoney.com/zjlx/600153.html, 获取主力净比、超大单净比、大单净比 三个字段实时数值，如：
+主力净比：	17.71%
+超大单净比：	-0.42%
+大单净比：	18.13%
+
+
+对资金流向进行统计分析，解析如下url： https://data.eastmoney.com/zjlx/detail.html，进行各维度分析
