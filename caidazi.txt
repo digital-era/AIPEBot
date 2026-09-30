@@ -5,3 +5,20 @@ https://qmtmcp.aivibeinvestment.com
 https://desktop-6hirfc0.tail8fcfdf.ts.net
 
 https://dict.thinktrader.net
+
+
+两个服务同时对外（推荐）
+Funnel 公网只允许 443 / 8443 / 10000，用不同公网端口或不同路径即可并存。
+方案 A：不同公网端口
+batREM 原 8787 服务 → 公网 443
+tailscale funnel --bg --https=443 http://127.0.0.1:8787
+或
+tailscale funnel --bg --https=443 8787
+
+REM 新 fundflow 18787 → 公网 8443
+tailscale funnel --bg --https=8443 http://127.0.0.1:18787
+或
+tailscale funnel --bg --https=8443 18787
+
+
+对外服务地址需要修改为：https://desktop-6hirfc0.tail8fcfdf.ts.net:8443
