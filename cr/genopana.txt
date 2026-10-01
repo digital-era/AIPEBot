@@ -1,0 +1,1855 @@
+	以资深金融研究分析师的杰出分析和洞察能力分析这只[标的公司]：海底捞 06862HK
+	分析包含如下几个层面，输出web页面分析报告代码， web页面样式参考如下代码， web页面文件名为： [标的公司名称]经营分析_年-月-日.html（如；海底捞经营分析_2026-09-22.html)，注意：一定通过网络搜索获取和校验最新真实信息和数据。
+	一、商业模式
+	二、竞争优势
+	评估 [标的公司] 的护城河，分析项：
+	• 品牌实力
+	• 网络效应
+	• 转换成本
+	• 成本优势
+	• 专利或自有技术
+	与主要竞争对手对比，护城河打分 1 到 10
+	三、行业趋势
+	四、财务状况
+	详细财务分析，解释要通俗，但分析要专业，分析 [标的公司] 最近 5 年的财务报表，说明这家公司财务状况是稳健还是下滑。分析项：
+	• 收入增长
+	• 净利润趋势
+	• 自由现金流
+	• 利润率
+	• 债务水平
+	• 股本回报率
+	五、估值分析
+	像投行一样对[标的公司]进行估值对比分析：
+	• 市盈率（P/E）对比
+	• 现金流折现（DCF）估算
+	• 行业平均估值
+	• 结论：股票被低估还是高估
+	六、经营展望
+	分析 [标的公司]12-24 个月的经营发展
+	七、风险识别
+	识别投资 [标的公司] 的最大风险，按危险程度从高到低排序, 分析项：
+	• 经济风险
+	• 行业颠覆
+	• 竞争
+	• 监管威胁
+	• 债务或财务风险
+	八、多空视角
+	以机构投资组合经理的视角评估 [标的公司] 是否值得长期投资，包含：
+	• 可能买入的原因
+	• 可能回避的原因
+	• 关键因素
+	• 投资论点
+
+
+
+	web页面样式参考代码：
+	<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>海底捞（06862.HK）经营分析报告</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                50: "hsl(20, 90%, 95%)",
+                100: "hsl(20, 90%, 85%)",
+                200: "hsl(20, 90%, 75%)",
+                300: "hsl(20, 90%, 65%)",
+                400: "hsl(20, 90%, 55%)",
+                500: "hsl(20, 90%, 50%)",
+                600: "hsl(20, 90%, 45%)",
+                700: "hsl(20, 90%, 35%)",
+                800: "hsl(20, 90%, 25%)",
+                900: "hsl(20, 90%, 15%)",
+              },
+              accent: {
+                50: "hsl(30, 85%, 95%)",
+                100: "hsl(30, 85%, 85%)",
+                200: "hsl(30, 85%, 75%)",
+                300: "hsl(30, 85%, 65%)",
+                400: "hsl(30, 85%, 60%)",
+                500: "hsl(30, 85%, 55%)",
+                600: "hsl(30, 85%, 50%)",
+                700: "hsl(30, 85%, 40%)",
+                800: "hsl(30, 85%, 30%)",
+                900: "hsl(30, 85%, 20%)",
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <script
+      defer
+      src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet" />
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <style>
+      html {
+        scroll-behavior: smooth;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+        }
+        html {
+          scroll-behavior: auto;
+        }
+      }
+      .btn-interactive {
+        transition: all 0.2s ease-out;
+      }
+      .btn-interactive:hover {
+        transform: scale(1.05);
+        box-shadow:
+          0 10px 15px -3px rgba(0, 0, 0, 0.1),
+          0 4px 6px -2px rgba(0, 0, 0, 0.05);
+      }
+      .btn-interactive:active {
+        transform: scale(0.95);
+      }
+      .card-interactive {
+        transition: all 0.3s ease-out;
+        border: 1px solid transparent;
+        --border-lightness: 40%;
+      }
+      .dark .card-interactive {
+        --border-lightness: 60%;
+      }
+      .card-interactive:hover {
+        box-shadow:
+          0 20px 25px -5px rgba(0, 0, 0, 0.1),
+          0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        filter: brightness(0.98);
+      }
+      .card-interactive[class*="primary"]:hover,
+      .card-interactive[class*="white"]:hover,
+      .card-interactive[class*="gray-"]:hover {
+        border-color: hsl(20, 90%, var(--border-lightness));
+      }
+      .card-interactive[class*="accent"]:hover {
+        border-color: hsl(30, 85%, var(--border-lightness));
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.75rem;
+        border-bottom: 1px solid hsl(0, 0%, 90%);
+      }
+      .dark th,
+      .dark td {
+        border-bottom-color: hsl(0, 0%, 30%);
+      }
+      .moat-bar {
+        height: 10px;
+        border-radius: 5px;
+        background: hsl(0, 0%, 90%);
+        overflow: hidden;
+      }
+      .dark .moat-bar {
+        background: hsl(0, 0%, 30%);
+      }
+      .moat-fill {
+        height: 100%;
+        border-radius: 5px;
+        background: linear-gradient(
+          90deg,
+          hsl(20, 90%, 55%),
+          hsl(30, 85%, 55%)
+        );
+        transition: width 1.2s ease-out;
+      }
+      .risk-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        font-weight: 700;
+        font-size: 13px;
+      }
+
+      /* ===== 暗色模式全局对比度增强 ===== */
+      .dark body {
+        color: #f3f4f6;
+      }
+      .dark header nav a {
+        color: #e5e7eb !important;
+      }
+      .dark header nav a:hover {
+        color: hsl(20, 90%, 65%) !important;
+      }
+      /* 辅助灰色文字在暗色下调亮 */
+      .dark .text-gray-400,
+      .dark .text-gray-500 {
+        color: #9ca3af !important;
+      }
+      /* 表格文字强制可见 */
+      .dark table th {
+        color: #f3f4f6;
+      }
+      .dark table td {
+        color: #e5e7eb;
+      }
+      /* 卡片内灰色说明文字 */
+      .dark .text-gray-600 {
+        color: #d1d5db !important;
+      }
+      .dark .text-gray-700 {
+        color: #e5e7eb !important;
+      }
+    </style>
+    <script>
+      function toggleDarkMode() {
+        document.body.classList.toggle("dark");
+        const isDark = document.body.classList.contains("dark");
+        document.getElementById("sunIcon").style.display = isDark
+          ? "block"
+          : "none";
+        document.getElementById("moonIcon").style.display = isDark
+          ? "none"
+          : "block";
+      }
+    </script>
+  </head>
+  <body
+    class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen"
+  >
+    <!-- Progress Bar -->
+    <div
+      class="fixed top-0 left-0 h-1 bg-primary-500 dark:bg-primary-400 z-[60] transition-all duration-300 ease-out"
+      id="progressBar"
+      style="width: 0%"
+    ></div>
+
+    <!-- Floating Header -->
+    <header
+      class="fixed top-0 left-0 right-0 z-50 backdrop-blur bg-gray-50/90 dark:bg-gray-950/95 border-b border-primary-500/20 dark:border-primary-600/30 text-gray-900 dark:text-gray-100"
+    >
+      <div class="max-w-7xl mx-auto px-6 py-4">
+        <div class="flex items-center justify-between">
+          <h1 class="text-xl font-bold text-primary-700 dark:text-primary-300">
+            海底捞 06862.HK 经营分析
+          </h1>
+          <nav class="hidden md:flex space-x-5">
+            <a
+              href="#model"
+              class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >商业模式</a
+            >
+            <a
+              href="#moat"
+              class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >护城河</a
+            >
+            <a
+              href="#industry"
+              class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >行业趋势</a
+            >
+            <a
+              href="#financial"
+              class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >财务状况</a
+            >
+            <a
+              href="#valuation"
+              class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >估值</a
+            >
+            <a
+              href="#outlook"
+              class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >展望</a
+            >
+            <a
+              href="#risk"
+              class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >风险</a
+            >
+            <a
+              href="#longshort"
+              class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+              >多空</a
+            >
+          </nav>
+          <button
+            onclick="toggleDarkMode()"
+            class="btn-interactive p-2 rounded-lg bg-primary-100 dark:bg-primary-800 text-primary-600 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-700 transition-all"
+          >
+            <i
+              data-lucide="sun"
+              id="sunIcon"
+              class="w-5 h-5"
+              style="display: none"
+            ></i>
+            <i
+              data-lucide="moon"
+              id="moonIcon"
+              class="w-5 h-5"
+              style="display: block"
+            ></i>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="min-h-screen">
+      <!-- Hero -->
+      <section
+        class="py-36 bg-gradient-to-br from-primary-50/60 via-white to-accent-50/40 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800"
+        data-aos="fade-up"
+      >
+        <div class="max-w-5xl mx-auto px-6">
+          <div class="flex items-center gap-3 mb-4">
+            <span
+              class="px-3 py-1 text-xs font-semibold rounded-full bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300"
+              >港股 · 餐饮 · 火锅</span
+            >
+            <span
+              class="px-3 py-1 text-xs font-semibold rounded-full bg-accent-100 dark:bg-accent-900/40 text-accent-700 dark:text-accent-300"
+              >06862.HK</span
+            >
+          </div>
+          <h2
+            class="text-4xl md:text-5xl font-bold mb-6 text-primary-700 dark:text-primary-300"
+          >
+            海底捞国际控股有限公司<br /><span
+              class="text-2xl md:text-3xl text-gray-600 dark:text-gray-400 font-medium"
+              >经营分析报告</span
+            >
+          </h2>
+          <p
+            class="text-lg text-gray-700 dark:text-gray-300 mb-10 leading-relaxed max-w-3xl"
+          >
+            海底捞是中国餐饮行业最具代表性的龙头公司，以极致服务体验和独特的管理机制构建了深厚的品牌壁垒。当前公司正处于从"开店驱动"向"能力驱动"转型的关键阶段，创始人张勇重新兼任CEO，"红石榴计划"孵化第二增长曲线，外卖业务高速增长。本报告从八个维度系统评估其投资价值。
+          </p>
+          <div class="grid md:grid-cols-4 gap-4">
+            <div
+              class="card-interactive p-5 bg-white/90 dark:bg-gray-800 rounded-xl shadow-md text-center"
+            >
+              <div
+                class="text-2xl font-bold text-primary-600 dark:text-primary-400"
+              >
+                432.3亿
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                2025年营收（人民币）
+              </div>
+            </div>
+            <div
+              class="card-interactive p-5 bg-white/90 dark:bg-gray-800 rounded-xl shadow-md text-center"
+            >
+              <div
+                class="text-2xl font-bold text-accent-600 dark:text-accent-400"
+              >
+                40.5亿
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                2025年归母净利润
+              </div>
+            </div>
+            <div
+              class="card-interactive p-5 bg-white/90 dark:bg-gray-800 rounded-xl shadow-md text-center"
+            >
+              <div
+                class="text-2xl font-bold text-primary-600 dark:text-primary-400"
+              >
+                1,383
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                全球门店总数
+              </div>
+            </div>
+            <div
+              class="card-interactive p-5 bg-white/90 dark:bg-gray-800 rounded-xl shadow-md text-center"
+            >
+              <div
+                class="text-2xl font-bold text-accent-600 dark:text-accent-400"
+              >
+                3.9次/天
+              </div>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                2025年翻台率
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 一、商业模式 -->
+      <section
+        id="model"
+        class="py-20 bg-white/80 dark:bg-gray-900"
+        data-aos="fade-up"
+      >
+        <div class="max-w-5xl mx-auto px-6">
+          <div class="flex items-center gap-3 mb-8">
+            <div
+              class="w-10 h-10 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center"
+            >
+              <i
+                data-lucide="store"
+                class="w-5 h-5 text-primary-600 dark:text-primary-400"
+              ></i>
+            </div>
+            <h2
+              class="text-3xl font-bold text-primary-700 dark:text-primary-300"
+            >
+              一、商业模式
+            </h2>
+          </div>
+          <div class="space-y-6">
+            <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+              海底捞的核心商业模式可以概括为<strong>"直营连锁+极致服务溢价+供应链垂直整合"</strong>。公司主要通过自营海底捞餐厅向消费者提供火锅餐饮服务，以远超行业标准的服务体验（免费美甲、擦鞋、生日庆祝、等位零食等）建立品牌溢价，客单价维持在97–100元区间，显著高于大众火锅品牌。2025年公司餐厅经营收入390.6亿元，占总营收的90.4%，是绝对收入支柱[reference:0]。
+            </p>
+            <div class="grid md:grid-cols-3 gap-5">
+              <div
+                class="card-interactive p-6 bg-primary-50/50 dark:bg-primary-900/20 rounded-xl shadow-md"
+              >
+                <div class="flex items-center gap-2 mb-3">
+                  <i
+                    data-lucide="handshake"
+                    class="w-5 h-5 text-primary-600 dark:text-primary-400"
+                  ></i>
+                  <h3
+                    class="font-semibold text-primary-700 dark:text-primary-300"
+                  >
+                    直营为主 + 加盟为辅
+                  </h3>
+                </div>
+                <p
+                  class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+                >
+                  截至2025年底，自营门店1,304家，加盟门店79家。2024年开放加盟后，加盟模式成为低线城市渗透和轻资产扩张的重要工具，但自营仍贡献绝大部分收入。
+                </p>
+              </div>
+              <div
+                class="card-interactive p-6 bg-accent-50/50 dark:bg-accent-900/20 rounded-xl shadow-md"
+              >
+                <div class="flex items-center gap-2 mb-3">
+                  <i
+                    data-lucide="users"
+                    class="w-5 h-5 text-accent-600 dark:text-accent-400"
+                  ></i>
+                  <h3
+                    class="font-semibold text-accent-700 dark:text-accent-300"
+                  >
+                    师徒制与利益绑定
+                  </h3>
+                </div>
+                <p
+                  class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+                >
+                  店长培养徒弟店长可获得徒弟门店利润提成，形成"连住利益、锁住管理"的裂变式扩张机制，是海底捞区别于其他连锁餐饮的核心组织能力。
+                </p>
+              </div>
+              <div
+                class="card-interactive p-6 bg-primary-50/50 dark:bg-primary-900/20 rounded-xl shadow-md"
+              >
+                <div class="flex items-center gap-2 mb-3">
+                  <i
+                    data-lucide="link"
+                    class="w-5 h-5 text-primary-600 dark:text-primary-400"
+                  ></i>
+                  <h3
+                    class="font-semibold text-primary-700 dark:text-primary-300"
+                  >
+                    供应链体系化
+                  </h3>
+                </div>
+                <p
+                  class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+                >
+                  通过蜀海供应链（食材采购与物流）、颐海国际（底料与调味品）、海海科技（数字化系统）等关联公司，构建从田间到餐桌的垂直整合能力，降低采购成本并保障食材品质。
+                </p>
+              </div>
+            </div>
+            <div
+              class="pl-4 pr-3 py-3 border-l-4 border-primary-500 bg-primary-50/40 dark:bg-primary-900/30 rounded-r-lg mt-6"
+            >
+              <p
+                class="text-sm font-medium text-primary-900 dark:text-primary-100 leading-relaxed"
+              >
+                <i
+                  data-lucide="lightbulb"
+                  class="inline-block w-4 h-4 mr-1.5 -mt-0.5"
+                ></i>
+                海底捞的商业模式本质上是"服务体验驱动的高溢价连锁餐饮"——用服务创造差异化，用师徒制实现快速复制，用供应链控制成本底线。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 二、竞争优势（护城河） -->
+      <section
+        id="moat"
+        class="py-20 bg-primary-50/50 dark:bg-gray-800"
+        data-aos="fade-up"
+      >
+        <div class="max-w-5xl mx-auto px-6">
+          <div class="flex items-center gap-3 mb-8">
+            <div
+              class="w-10 h-10 rounded-lg bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center"
+            >
+              <i
+                data-lucide="shield"
+                class="w-5 h-5 text-accent-600 dark:text-accent-400"
+              ></i>
+            </div>
+            <h2 class="text-3xl font-bold text-accent-700 dark:text-accent-300">
+              二、竞争优势：护城河评估
+            </h2>
+          </div>
+          <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-8">
+            护城河是公司抵御竞争、维持超额回报的结构性优势。以下从五个维度对海底捞进行打分（1–10分），并与主要竞争对手进行对比。
+          </p>
+
+          <div class="space-y-6">
+            <!-- 品牌实力 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+            >
+              <div class="flex items-center justify-between mb-3">
+                <h3
+                  class="font-semibold text-lg text-primary-700 dark:text-primary-300"
+                >
+                  品牌实力
+                </h3>
+                <span
+                  class="text-2xl font-bold text-primary-600 dark:text-primary-400"
+                  >9<span class="text-sm font-normal text-gray-400"
+                    >/10</span
+                  ></span
+                >
+              </div>
+              <div class="moat-bar mb-3">
+                <div class="moat-fill" style="width: 90%"></div>
+              </div>
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                海底捞是中国餐饮行业认知度最高的品牌之一，在全国火锅门店收缩7%的背景下仍保持门店数量增长，品牌号召力突出。"海底捞"三个字几乎等同于"极致服务"，形成了难以复制的消费者心智占位。[reference:1]
+              </p>
+            </div>
+
+            <!-- 网络效应 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+            >
+              <div class="flex items-center justify-between mb-3">
+                <h3
+                  class="font-semibold text-lg text-primary-700 dark:text-primary-300"
+                >
+                  网络效应
+                </h3>
+                <span
+                  class="text-2xl font-bold text-primary-600 dark:text-primary-400"
+                  >5<span class="text-sm font-normal text-gray-400"
+                    >/10</span
+                  ></span
+                >
+              </div>
+              <div class="moat-bar mb-3">
+                <div class="moat-fill" style="width: 50%"></div>
+              </div>
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                餐饮行业本身网络效应有限，但海底捞的师徒裂变机制在一定程度上产生了"组织网络效应"——门店越多，可培养的店长候选人越多，扩张能力越强。这种效应在组织层面而非用户层面运作。
+              </p>
+            </div>
+
+            <!-- 转换成本 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+            >
+              <div class="flex items-center justify-between mb-3">
+                <h3
+                  class="font-semibold text-lg text-primary-700 dark:text-primary-300"
+                >
+                  转换成本
+                </h3>
+                <span
+                  class="text-2xl font-bold text-primary-600 dark:text-primary-400"
+                  >4<span class="text-sm font-normal text-gray-400"
+                    >/10</span
+                  ></span
+                >
+              </div>
+              <div class="moat-bar mb-3">
+                <div class="moat-fill" style="width: 40%"></div>
+              </div>
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                餐饮消费的转换成本天然较低，消费者可以随时选择其他火锅品牌。但海底捞通过会员体系（捞币积分、会员折扣）、情感连接（生日仪式感、个性化服务记忆）在一定程度上提高了粘性。
+              </p>
+            </div>
+
+            <!-- 成本优势 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+            >
+              <div class="flex items-center justify-between mb-3">
+                <h3
+                  class="font-semibold text-lg text-primary-700 dark:text-primary-300"
+                >
+                  成本优势
+                </h3>
+                <span
+                  class="text-2xl font-bold text-primary-600 dark:text-primary-400"
+                  >7<span class="text-sm font-normal text-gray-400"
+                    >/10</span
+                  ></span
+                >
+              </div>
+              <div class="moat-bar mb-3">
+                <div class="moat-fill" style="width: 70%"></div>
+              </div>
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                颐海国际作为核心底料供应商，长期对海底捞执行关联方优惠定价，报价显著低于对外B端市场，间接降低了主业的原材料成本。此外，蜀海供应链的规模化采购和自有物流体系也带来了可观的成本优势。[reference:2]
+              </p>
+            </div>
+
+            <!-- 专利或自有技术 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+            >
+              <div class="flex items-center justify-between mb-3">
+                <h3
+                  class="font-semibold text-lg text-primary-700 dark:text-primary-300"
+                >
+                  专利或自有技术
+                </h3>
+                <span
+                  class="text-2xl font-bold text-primary-600 dark:text-primary-400"
+                  >6<span class="text-sm font-normal text-gray-400"
+                    >/10</span
+                  ></span
+                >
+              </div>
+              <div class="moat-bar mb-3">
+                <div class="moat-fill" style="width: 60%"></div>
+              </div>
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                海底捞的核心"技术"不在于专利，而在于组织管理技术——师徒制、计件工资、店长考核体系等一套经过长期验证的人力资源管理体系。此外，公司在数字化（智能点餐、后厨自动化）和产品研发（区域特色菜品体系）方面也有持续投入。
+              </p>
+            </div>
+          </div>
+
+          <!-- 竞对对比 -->
+          <div class="mt-10">
+            <h3
+              class="text-xl font-semibold text-accent-700 dark:text-accent-300 mb-5"
+            >
+              与主要竞争对手的护城河对比
+            </h3>
+            <div
+              class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700"
+            >
+              <table
+                class="bg-white/90 dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+              >
+                <thead class="bg-primary-50 dark:bg-primary-900/30">
+                  <tr>
+                    <th
+                      class="font-semibold text-primary-700 dark:text-primary-300"
+                    >
+                      维度
+                    </th>
+                    <th
+                      class="font-semibold text-primary-700 dark:text-primary-300"
+                    >
+                      海底捞
+                    </th>
+                    <th class="font-semibold text-gray-600 dark:text-gray-400">
+                      呷哺呷哺
+                    </th>
+                    <th class="font-semibold text-gray-600 dark:text-gray-400">
+                      怂火锅（九毛九）
+                    </th>
+                    <th class="font-semibold text-gray-600 dark:text-gray-400">
+                      巴奴
+                    </th>
+                  </tr>
+                </thead>
+                <tbody class="text-sm">
+                  <tr>
+                    <td class="font-medium">品牌实力</td>
+                    <td
+                      class="text-primary-600 dark:text-primary-400 font-semibold"
+                    >
+                      9
+                    </td>
+                    <td>5</td>
+                    <td>6</td>
+                    <td>7</td>
+                  </tr>
+                  <tr>
+                    <td class="font-medium">成本优势</td>
+                    <td
+                      class="text-primary-600 dark:text-primary-400 font-semibold"
+                    >
+                      7
+                    </td>
+                    <td>5</td>
+                    <td>4</td>
+                    <td>5</td>
+                  </tr>
+                  <tr>
+                    <td class="font-medium">组织能力</td>
+                    <td
+                      class="text-primary-600 dark:text-primary-400 font-semibold"
+                    >
+                      9
+                    </td>
+                    <td>4</td>
+                    <td>5</td>
+                    <td>6</td>
+                  </tr>
+                  <tr>
+                    <td class="font-medium">客单价（元）</td>
+                    <td>97–100</td>
+                    <td>60–70</td>
+                    <td>104–120</td>
+                    <td>130–140</td>
+                  </tr>
+                  <tr>
+                    <td class="font-medium">2025年翻台率</td>
+                    <td>3.9次/天</td>
+                    <td>约2.0次/天</td>
+                    <td>约2.9次/天</td>
+                    <td>约3.0次/天</td>
+                  </tr>
+                  <tr>
+                    <td class="font-medium">门店规模</td>
+                    <td>1,383家</td>
+                    <td>约800家</td>
+                    <td>约80家</td>
+                    <td>约100家</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-3">
+              数据来源：公司公告、券商研报、公开报道整理。怂火锅翻台率参考2024年数据。
+            </p>
+          </div>
+
+          <div
+            class="mt-6 pl-4 pr-3 py-3 border-l-4 border-accent-500 bg-accent-50/40 dark:bg-accent-900/30 rounded-r-lg"
+          >
+            <p
+              class="text-sm font-medium text-accent-900 dark:text-accent-100 leading-relaxed"
+            >
+              <i
+                data-lucide="award"
+                class="inline-block w-4 h-4 mr-1.5 -mt-0.5"
+              ></i>
+              综合护城河评分：<strong>7.0/10</strong>。海底捞在品牌力和组织管理能力上拥有显著优势，但在转换成本和网络效应方面天然较弱。护城河的核心来源是"品牌心智+师徒制组织能力+供应链协同"的组合，而非单一维度的壁垒。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 三、行业趋势 -->
+      <section
+        id="industry"
+        class="py-20 bg-white/80 dark:bg-gray-900"
+        data-aos="fade-up"
+      >
+        <div class="max-w-5xl mx-auto px-6">
+          <div class="flex items-center gap-3 mb-8">
+            <div
+              class="w-10 h-10 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center"
+            >
+              <i
+                data-lucide="trending-up"
+                class="w-5 h-5 text-primary-600 dark:text-primary-400"
+              ></i>
+            </div>
+            <h2
+              class="text-3xl font-bold text-primary-700 dark:text-primary-300"
+            >
+              三、行业趋势
+            </h2>
+          </div>
+          <div class="space-y-6">
+            <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+              中国火锅行业已从增量扩张全面转向存量竞争。2025年全国火锅市场规模约6,390亿元，门店总数约44.8万家，连锁化率提升至25%左右，但门店总数呈波动下降趋势，重点城市门店数明显减少。行业竞争日趋白热化，人均消费持续下行，企业普遍面临"高规模、低利润"的经营压力。[reference:5][reference:6]
+            </p>
+            <div class="grid md:grid-cols-2 gap-5">
+              <div
+                class="card-interactive p-6 bg-primary-50/50 dark:bg-primary-900/20 rounded-xl shadow-md"
+              >
+                <h3
+                  class="font-semibold text-primary-700 dark:text-primary-300 mb-3 flex items-center gap-2"
+                >
+                  <i data-lucide="arrow-down-circle" class="w-5 h-5"></i
+                  >存量竞争与分化加剧
+                </h3>
+                <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                  <li>• 2025年火锅相关企业新成立数量同比下降超20%</li>
+                  <li>
+                    •
+                    头部品牌（海底捞、许府牛）维持门店优势，多数品牌门店数低于1,000家
+                  </li>
+                  <li>• 椰子鸡、小火锅闭店率较高，羊肉火锅闭店率最低</li>
+                  <li>• 行业进入"求鲜、求新、求性价比"的价值重构阶段</li>
+                </ul>
+              </div>
+              <div
+                class="card-interactive p-6 bg-accent-50/50 dark:bg-accent-900/20 rounded-xl shadow-md"
+              >
+                <h3
+                  class="font-semibold text-accent-700 dark:text-accent-300 mb-3 flex items-center gap-2"
+                >
+                  <i data-lucide="zap" class="w-5 h-5"></i>结构性机会
+                </h3>
+                <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                  <li>
+                    •
+                    下沉市场拓展：县域消费潜力释放，中高消费力人群在价格带的韧性更明显
+                  </li>
+                  <li>
+                    •
+                    数智化升级：AI点餐、后厨自动化、供应链数字化成为效率竞争关键
+                  </li>
+                  <li>
+                    •
+                    外卖与即时零售：商超、即时零售渠道分流堂食客群，火锅外卖场景加速渗透
+                  </li>
+                  <li>
+                    • 地域风味与小火锅：Z世代"味蕾旅行"驱动区域特色火锅增长
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <div
+              class="mt-4 p-5 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700"
+            >
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                <strong class="text-gray-800 dark:text-gray-200"
+                  >对海底捞的影响：</strong
+                >行业存量竞争意味着单纯依靠开店驱动增长的模式已走到尽头。海底捞的应对策略——控制自营开店节奏、扩大加盟、发力外卖和"红石榴计划"多品牌孵化——与行业趋势高度吻合。但人均消费下行压力（海底捞客单价从103元降至97.7元）也反映出高端火锅的定价空间正在收窄。[reference:7]
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 四、财务状况 -->
+      <section
+        id="financial"
+        class="py-20 bg-primary-50/50 dark:bg-gray-800"
+        data-aos="fade-up"
+      >
+        <div class="max-w-6xl mx-auto px-6">
+          <div class="flex items-center gap-3 mb-8">
+            <div
+              class="w-10 h-10 rounded-lg bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center"
+            >
+              <i
+                data-lucide="bar-chart-3"
+                class="w-5 h-5 text-accent-600 dark:text-accent-400"
+              ></i>
+            </div>
+            <h2 class="text-3xl font-bold text-accent-700 dark:text-accent-300">
+              四、财务状况
+            </h2>
+          </div>
+
+          <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-8">
+            以下分析海底捞2021–2025年五年财务表现，数据来源于公司年报及公开财务数据库。
+          </p>
+
+          <!-- 收入与利润表 -->
+          <div
+            class="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 mb-8"
+          >
+            <table
+              class="bg-white/90 dark:bg-gray-900 text-gray-800 dark:text-gray-200"
+            >
+              <thead class="bg-accent-50 dark:bg-accent-900/30">
+                <tr>
+                  <th
+                    class="font-semibold text-accent-700 dark:text-accent-300"
+                  >
+                    指标（人民币亿元）
+                  </th>
+                  <th
+                    class="font-semibold text-accent-700 dark:text-accent-300"
+                  >
+                    2021
+                  </th>
+                  <th
+                    class="font-semibold text-accent-700 dark:text-accent-300"
+                  >
+                    2022
+                  </th>
+                  <th
+                    class="font-semibold text-accent-700 dark:text-accent-300"
+                  >
+                    2023
+                  </th>
+                  <th
+                    class="font-semibold text-accent-700 dark:text-accent-300"
+                  >
+                    2024
+                  </th>
+                  <th
+                    class="font-semibold text-accent-700 dark:text-accent-300"
+                  >
+                    2025
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="text-sm">
+                <tr>
+                  <td class="font-medium">营业收入</td>
+                  <td>411.1</td>
+                  <td>310.4</td>
+                  <td>414.5</td>
+                  <td>427.5</td>
+                  <td
+                    class="font-semibold text-primary-600 dark:text-primary-400"
+                  >
+                    432.3
+                  </td>
+                </tr>
+                <tr>
+                  <td class="font-medium">营收同比</td>
+                  <td>—</td>
+                  <td class="text-red-600 dark:text-red-400">-24.5%</td>
+                  <td class="text-green-600 dark:text-green-400">+33.6%</td>
+                  <td class="text-green-600 dark:text-green-400">+3.1%</td>
+                  <td class="text-green-600 dark:text-green-400">+1.1%</td>
+                </tr>
+                <tr>
+                  <td class="font-medium">归母净利润</td>
+                  <td class="text-red-600 dark:text-red-400">-41.6</td>
+                  <td>13.7</td>
+                  <td>45.0</td>
+                  <td>47.1</td>
+                  <td
+                    class="font-semibold text-primary-600 dark:text-primary-400"
+                  >
+                    40.5
+                  </td>
+                </tr>
+                <tr>
+                  <td class="font-medium">净利润同比</td>
+                  <td>—</td>
+                  <td>扭亏</td>
+                  <td class="text-green-600 dark:text-green-400">+227%</td>
+                  <td class="text-green-600 dark:text-green-400">+4.6%</td>
+                  <td class="text-red-600 dark:text-red-400">-14.0%</td>
+                </tr>
+                <tr>
+                  <td class="font-medium">核心经营利润</td>
+                  <td>—</td>
+                  <td>—</td>
+                  <td>—</td>
+                  <td>62.3</td>
+                  <td>54.0</td>
+                </tr>
+                <tr>
+                  <td class="font-medium">毛利率</td>
+                  <td>—</td>
+                  <td>20.5%</td>
+                  <td>22.8%</td>
+                  <td>23.9%</td>
+                  <td>21.7%</td>
+                </tr>
+                <tr>
+                  <td class="font-medium">净利率</td>
+                  <td>-10.1%</td>
+                  <td>4.4%</td>
+                  <td>10.9%</td>
+                  <td>11.0%</td>
+                  <td>9.4%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-5 mb-8">
+            <!-- 收入增长分析 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+            >
+              <h3
+                class="font-semibold text-lg text-primary-700 dark:text-primary-300 mb-3 flex items-center gap-2"
+              >
+                <i data-lucide="trending-up" class="w-5 h-5"></i
+                >收入增长：从深蹲到微增
+              </h3>
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                2022年营收因"啄木鸟计划"大规模关店而大幅下滑至310亿元，此后连续三年回升。2025年营收432.3亿元，同比仅增1.1%，增速明显放缓。结构上，餐厅经营收入同比下降4.5%至390.6亿元，但外卖收入（26.58亿元，+111.9%）和其他餐厅收入（15.21亿元，+214.6%）的高速增长部分对冲了主业下滑。[reference:8][reference:9]
+              </p>
+            </div>
+            <!-- 净利润趋势 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+            >
+              <h3
+                class="font-semibold text-lg text-primary-700 dark:text-primary-300 mb-3 flex items-center gap-2"
+              >
+                <i data-lucide="trending-down" class="w-5 h-5"></i
+                >净利润趋势：增收不增利
+              </h3>
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                2023年净利润反弹至45亿元后，2024年微增至47.1亿元，2025年则下滑14%至40.5亿元。净利润下滑的核心原因是翻台率从4.1次降至3.9次/天，全年接待顾客人次下降7.5%。2026年上半年归母净利润仅微增0.5%至17.67亿元，"增收不增利"的压力持续。[reference:10][reference:11]
+              </p>
+            </div>
+            <!-- 自由现金流 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+            >
+              <h3
+                class="font-semibold text-lg text-primary-700 dark:text-primary-300 mb-3 flex items-center gap-2"
+              >
+                <i data-lucide="wallet" class="w-5 h-5"></i>自由现金流与资本开支
+              </h3>
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                海底捞的资本开支高峰已过，2021年大规模扩张后，随着关店和开店节奏放缓，资本开支显著下降。公司2025年折旧及摊销为21.8亿元，较2021年的45.5亿元大幅降低，反映资产结构的优化。稳健的经营现金流和下降的资本开支为高分红提供了支撑——2025年全年派息率达95%以上，2026年上半年更提升至100%。[reference:12][reference:13]
+              </p>
+            </div>
+            <!-- 利润率与债务 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+            >
+              <h3
+                class="font-semibold text-lg text-primary-700 dark:text-primary-300 mb-3 flex items-center gap-2"
+              >
+                <i data-lucide="scale" class="w-5 h-5"></i>利润率与债务水平
+              </h3>
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                净利率从2023–2024年的约11%回落至2025年的9.4%，主要受原材料成本占比上升（+1.8个百分点至39.8%）和低毛利新业务占比提升的影响。债务方面，惠誉确认海底捞"BBB"长期发行人评级，展望稳定。公司2025年持有现金66亿元，足以覆盖24亿元债务总额，债务/权益比率约59%，财务结构稳健。[reference:14][reference:15]
+              </p>
+            </div>
+          </div>
+
+          <!-- ROE 与财务稳健性判断 -->
+          <div
+            class="card-interactive p-8 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+          >
+            <h3
+              class="text-xl font-semibold text-accent-700 dark:text-accent-300 mb-4"
+            >
+              股本回报率（ROE）与整体判断
+            </h3>
+            <div class="flex items-center gap-6 mb-4">
+              <div class="text-center">
+                <div
+                  class="text-4xl font-bold text-primary-600 dark:text-primary-400"
+                >
+                  41.9%
+                </div>
+                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  ROE (TTM)
+                </div>
+              </div>
+              <div class="text-center">
+                <div
+                  class="text-4xl font-bold text-accent-600 dark:text-accent-400"
+                >
+                  16.3%
+                </div>
+                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  ROA (TTM)
+                </div>
+              </div>
+              <div class="text-center">
+                <div class="text-4xl font-bold text-green-600">1.22</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  流动比率
+                </div>
+              </div>
+            </div>
+            <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+              ROE维持在40%以上，在餐饮行业中处于极高水平，主要得益于高周转（翻台率驱动的资产效率）和供应链协同带来的利润放大。综合来看，海底捞的财务状况<strong>整体稳健但增长动能减弱</strong>——资产负债表健康、现金流充裕、分红慷慨，但收入增速放缓和净利润下滑是需要密切关注的信号。公司当前的问题不是"财务是否安全"，而是"增长故事能否续写"。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 五、估值分析 -->
+      <section
+        id="valuation"
+        class="py-20 bg-white/80 dark:bg-gray-900"
+        data-aos="fade-up"
+      >
+        <div class="max-w-5xl mx-auto px-6">
+          <div class="flex items-center gap-3 mb-8">
+            <div
+              class="w-10 h-10 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center"
+            >
+              <i
+                data-lucide="calculator"
+                class="w-5 h-5 text-primary-600 dark:text-primary-400"
+              ></i>
+            </div>
+            <h2
+              class="text-3xl font-bold text-primary-700 dark:text-primary-300"
+            >
+              五、估值分析
+            </h2>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-5 mb-8">
+            <div
+              class="card-interactive p-6 bg-primary-50/50 dark:bg-primary-900/20 rounded-xl shadow-md"
+            >
+              <h3
+                class="font-semibold text-primary-700 dark:text-primary-300 mb-4"
+              >
+                市盈率（P/E）对比
+              </h3>
+              <div class="space-y-3">
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600 dark:text-gray-400"
+                    >海底捞（TTM）</span
+                  >
+                  <span class="font-bold text-primary-600 dark:text-primary-400"
+                    >10.7x</span
+                  >
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600 dark:text-gray-400"
+                    >呷哺呷哺（TTM）</span
+                  >
+                  <span class="font-semibold text-gray-600 dark:text-gray-400"
+                    >亏损，不适用</span
+                  >
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600 dark:text-gray-400"
+                    >九毛九（TTM）</span
+                  >
+                  <span class="font-semibold text-gray-600 dark:text-gray-400"
+                    >约15x</span
+                  >
+                </div>
+                <div
+                  class="flex justify-between items-center border-t border-gray-200 dark:border-gray-700 pt-3"
+                >
+                  <span
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >餐饮行业平均</span
+                  >
+                  <span class="font-semibold text-gray-700 dark:text-gray-300"
+                    >15–20x</span
+                  >
+                </div>
+              </div>
+              <p class="text-xs text-gray-400 mt-3">
+                海底捞当前P/E显著低于行业平均，反映了市场对其增长放缓的定价。券商给出的目标价对应的2026年PE在15–22倍之间。[reference:17]
+              </p>
+            </div>
+
+            <div
+              class="card-interactive p-6 bg-accent-50/50 dark:bg-accent-900/20 rounded-xl shadow-md"
+            >
+              <h3
+                class="font-semibold text-accent-700 dark:text-accent-300 mb-4"
+              >
+                券商目标价汇总
+              </h3>
+              <div class="space-y-3">
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600 dark:text-gray-400"
+                    >国泰海通</span
+                  >
+                  <span
+                    class="font-semibold text-accent-600 dark:text-accent-400"
+                    >20.23 港元</span
+                  >
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600 dark:text-gray-400"
+                    >国金证券</span
+                  >
+                  <span
+                    class="font-semibold text-accent-600 dark:text-accent-400"
+                    >18.94 港元</span
+                  >
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600 dark:text-gray-400"
+                    >野村</span
+                  >
+                  <span
+                    class="font-semibold text-accent-600 dark:text-accent-400"
+                    >18.40 港元</span
+                  >
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600 dark:text-gray-400"
+                    >申万宏源</span
+                  >
+                  <span
+                    class="font-semibold text-accent-600 dark:text-accent-400"
+                    >17.30 港元</span
+                  >
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600 dark:text-gray-400"
+                    >国元证券</span
+                  >
+                  <span
+                    class="font-semibold text-accent-600 dark:text-accent-400"
+                    >15.71 港元</span
+                  >
+                </div>
+                <div class="flex justify-between items-center">
+                  <span class="text-sm text-gray-600 dark:text-gray-400"
+                    >华兴证券</span
+                  >
+                  <span
+                    class="font-semibold text-accent-600 dark:text-accent-400"
+                    >14.50 港元</span
+                  >
+                </div>
+                <div
+                  class="flex justify-between items-center border-t border-gray-200 dark:border-gray-700 pt-3"
+                >
+                  <span
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >大和（最保守）</span
+                  >
+                  <span class="font-semibold text-gray-700 dark:text-gray-300"
+                    >11.30 港元</span
+                  >
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DCF 参考 -->
+          <div
+            class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md mb-8"
+          >
+            <h3
+              class="font-semibold text-lg text-primary-700 dark:text-primary-300 mb-4 flex items-center gap-2"
+            >
+              <i data-lucide="line-chart" class="w-5 h-5"></i
+              >现金流折现（DCF）估算参考
+            </h3>
+            <p
+              class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4"
+            >
+              根据第三方估值平台Simply Wall
+              St的DCF模型估算，海底捞的公允价值约在22–23港元区间，当前股价（约9.4–15港元区间）存在不同程度的折价。申万宏源基于DCF模型维持目标价17.3港元，国投证券基于DCF和同业比较给出15.3港元目标价。[reference:19][reference:20][reference:21]
+            </p>
+            <div class="grid grid-cols-3 gap-4 text-center">
+              <div class="p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
+                <div
+                  class="text-lg font-bold text-primary-600 dark:text-primary-400"
+                >
+                  22–23港元
+                </div>
+                <div class="text-xs text-gray-500">Simply Wall St DCF估值</div>
+              </div>
+              <div class="p-4 bg-accent-50 dark:bg-accent-900/20 rounded-lg">
+                <div
+                  class="text-lg font-bold text-accent-600 dark:text-accent-400"
+                >
+                  17.3港元
+                </div>
+                <div class="text-xs text-gray-500">申万宏源DCF目标价</div>
+              </div>
+              <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <div class="text-lg font-bold text-gray-700 dark:text-gray-300">
+                  15.3港元
+                </div>
+                <div class="text-xs text-gray-500">国投证券DCF目标价</div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            class="pl-4 pr-3 py-4 border-l-4 border-primary-500 bg-primary-50/40 dark:bg-primary-900/30 rounded-r-lg"
+          >
+            <p
+              class="text-sm font-medium text-primary-900 dark:text-primary-100 leading-relaxed"
+            >
+              <i
+                data-lucide="search"
+                class="inline-block w-4 h-4 mr-1.5 -mt-0.5"
+              ></i>
+              <strong>估值结论：</strong
+              >以2026年10月1日约9.4港元的股价来看，海底捞的TTM市盈率仅约10.7倍，显著低于餐饮行业平均15–20倍的水平，也低于多数券商给出的目标价区间（14.5–20.2港元）。市场当前定价隐含了对增长停滞和"增收不增利"的悲观预期。如果"红石榴计划"和外卖业务能够在2026–2027年推动利润重回增长轨道，则当前估值存在明显的修复空间。综合判断：<strong
+                >股票可能被低估，但低估的修复取决于增长故事能否兑现。</strong
+              >
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 六、经营展望 -->
+      <section
+        id="outlook"
+        class="py-20 bg-accent-50/50 dark:bg-gray-800"
+        data-aos="fade-up"
+      >
+        <div class="max-w-5xl mx-auto px-6">
+          <div class="flex items-center gap-3 mb-8">
+            <div
+              class="w-10 h-10 rounded-lg bg-accent-100 dark:bg-accent-900/30 flex items-center justify-center"
+            >
+              <i
+                data-lucide="calendar"
+                class="w-5 h-5 text-accent-600 dark:text-accent-400"
+              ></i>
+            </div>
+            <h2 class="text-3xl font-bold text-accent-700 dark:text-accent-300">
+              六、经营展望（12–24个月）
+            </h2>
+          </div>
+
+          <div class="space-y-5">
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+            >
+              <h3
+                class="font-semibold text-lg text-primary-700 dark:text-primary-300 mb-3"
+              >
+                主品牌：控量提质，翻台率企稳是关键
+              </h3>
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                2026年上半年翻台率同比提升0.1次至3.9次/天，7–8月翻台率环比上升、同比略升，显示边际改善迹象。公司预计2026年全年门店维持中单位数比例增速，自营门店净减少、加盟门店净增加的"轻资产化"趋势延续。国泰海通测算主品牌国内开店空间在1,800家以上，加盟模式是低线城市渗透的核心工具。[reference:22]
+              </p>
+            </div>
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+            >
+              <h3
+                class="font-semibold text-lg text-primary-700 dark:text-primary-300 mb-3"
+              >
+                外卖业务：从配角到支柱
+              </h3>
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                2026年上半年外卖收入同比增长121.2%至20.51亿元，收入占比提升至9.2%，主要来自"下饭菜"一人食产品的销量增长和外卖自建站模式的推进。全国已完成超过1,200个外卖网点布局。外卖业务的毛利率虽低于堂食，但其增长速度和场景延展性使其成为公司收入增长的重要引擎。[reference:24][reference:25]
+              </p>
+            </div>
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+            >
+              <h3
+                class="font-semibold text-lg text-primary-700 dark:text-primary-300 mb-3"
+              >
+                红石榴计划：聚焦复制，期待放量
+              </h3>
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                截至2026年上半年，"红石榴计划"运营21个品牌共183家门店，其他餐厅收入同比增长113%至12.71亿元。大排档火锅和寿司已进入规模化复制阶段，预计2026年下半年起逐步放量，2027年将成为其他餐厅收入增长的重要来源。但需注意，新品牌仍处于爬坡期，亏损较去年同期有所加大，短期内难以成为利润贡献主力。[reference:26][reference:27]
+              </p>
+            </div>
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md"
+            >
+              <h3
+                class="font-semibold text-lg text-primary-700 dark:text-primary-300 mb-3"
+              >
+                管理层与组织：张勇回归后的效率提升
+              </h3>
+              <p
+                class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+              >
+                张勇于2026年1月重新兼任CEO，推动流程智能化和中后台能力建设，目标是提升管理执行效率与信息传达有效度。市场对此持正面态度，认为创始人的回归有助于在战略转换期凝聚组织共识。但需关注"总部能力替代单店决策"是否会在长期削弱海底捞赖以成功的门店灵活性文化。
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 七、风险识别 -->
+      <section
+        id="risk"
+        class="py-20 bg-white/80 dark:bg-gray-900"
+        data-aos="fade-up"
+      >
+        <div class="max-w-5xl mx-auto px-6">
+          <div class="flex items-center gap-3 mb-8">
+            <div
+              class="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center"
+            >
+              <i
+                data-lucide="alert-triangle"
+                class="w-5 h-5 text-red-600 dark:text-red-400"
+              ></i>
+            </div>
+            <h2 class="text-3xl font-bold text-red-700 dark:text-red-400">
+              七、风险识别
+            </h2>
+          </div>
+          <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-8">
+            按危险程度从高到低排序：
+          </p>
+
+          <div class="space-y-4">
+            <!-- 风险1 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md border-l-4 border-red-500"
+            >
+              <div class="flex items-start gap-4">
+                <div
+                  class="risk-badge bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 flex-shrink-0"
+                >
+                  1
+                </div>
+                <div>
+                  <h3
+                    class="font-semibold text-lg text-red-700 dark:text-red-400 mb-2"
+                  >
+                    竞争风险 — 需求疲软与价格战
+                  </h3>
+                  <p
+                    class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+                  >
+                    这是当前对海底捞威胁最大的风险。中国餐饮消费增长乏力，2025年餐饮收入增速近三年来首次跑输社零增速。火锅行业进入存量竞争，人均消费持续下行，怂火锅等竞争对手推出"锅底八块八、荤菜九块九"的超低价策略，价格战压力向海底捞传导。海底捞客单价已从103元降至97.7元，但翻台率仍从4.1次降至3.9次，显示在保持性价比的同时未能有效刺激客流回升。如果消费环境进一步恶化，公司可能面临"降价也换不来客流"的困境。[reference:29][reference:30]
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 风险2 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md border-l-4 border-orange-500"
+            >
+              <div class="flex items-start gap-4">
+                <div
+                  class="risk-badge bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400 flex-shrink-0"
+                >
+                  2
+                </div>
+                <div>
+                  <h3
+                    class="font-semibold text-lg text-orange-700 dark:text-orange-400 mb-2"
+                  >
+                    经济风险 — 宏观消费复苏的不确定性
+                  </h3>
+                  <p
+                    class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+                  >
+                    海底捞的客单价在97–100元区间，属于中高端餐饮消费，对可支配收入和消费信心较为敏感。2026年上半年社零总额同比增长仅1.3%，消费者信心仍处于修复阶段。如果宏观经济复苏不及预期，中高消费力人群的消费频次可能进一步下降，对翻台率和客单价形成双重压力。
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 风险3 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md border-l-4 border-yellow-500"
+            >
+              <div class="flex items-start gap-4">
+                <div
+                  class="risk-badge bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400 flex-shrink-0"
+                >
+                  3
+                </div>
+                <div>
+                  <h3
+                    class="font-semibold text-lg text-yellow-700 dark:text-yellow-400 mb-2"
+                  >
+                    行业颠覆 — 外卖与零售渠道分流
+                  </h3>
+                  <p
+                    class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+                  >
+                    商超和即时零售渠道正在加速布局火锅食材和预制菜，以更低的价格和更便捷的体验分流堂食客群。海底捞自身的外卖业务（+111.9%）虽然高速增长，但毛利率较低，难以完全弥补堂食的利润贡献。如果堂食客流持续被分流，而外卖业务的利润贡献不足以对冲，整体盈利能力可能进一步承压。[reference:31]
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 风险4 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md border-l-4 border-blue-500"
+            >
+              <div class="flex items-start gap-4">
+                <div
+                  class="risk-badge bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400 flex-shrink-0"
+                >
+                  4
+                </div>
+                <div>
+                  <h3
+                    class="font-semibold text-lg text-blue-700 dark:text-blue-400 mb-2"
+                  >
+                    监管威胁 — 食品安全与劳动合规
+                  </h3>
+                  <p
+                    class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+                  >
+                    食品安全是餐饮行业的"一票否决"风险。海底捞2026年上半年完成2,840次突击检查，发现2,467项不符合内部标准的事项（均已整改），显示出公司对食安的高度重视，但也反映出标准化执行的挑战。此外，劳动用工合规（员工成本占收入33.8%）在监管趋严的背景下也可能带来成本上升压力。[reference:32][reference:33]
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 风险5 -->
+            <div
+              class="card-interactive p-6 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md border-l-4 border-green-500"
+            >
+              <div class="flex items-start gap-4">
+                <div
+                  class="risk-badge bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 flex-shrink-0"
+                >
+                  5
+                </div>
+                <div>
+                  <h3
+                    class="font-semibold text-lg text-green-700 dark:text-green-400 mb-2"
+                  >
+                    债务或财务风险 — 低风险
+                  </h3>
+                  <p
+                    class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"
+                  >
+                    惠誉确认海底捞"BBB"评级，展望稳定。公司持有现金66亿元，足以覆盖24亿元债务总额，2026年1月到期的美元债券已偿还，债务水平将进一步下降。财务风险在当前阶段并非主要威胁，但若公司为推进"红石榴计划"或海外扩张而大幅加杠杆，需要重新评估。[reference:34]
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 八、多空视角 -->
+      <section
+        id="longshort"
+        class="py-20 bg-primary-50/50 dark:bg-gray-800"
+        data-aos="fade-up"
+      >
+        <div class="max-w-5xl mx-auto px-6">
+          <div class="flex items-center gap-3 mb-8">
+            <div
+              class="w-10 h-10 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center"
+            >
+              <i
+                data-lucide="scale"
+                class="w-5 h-5 text-primary-600 dark:text-primary-400"
+              ></i>
+            </div>
+            <h2
+              class="text-3xl font-bold text-primary-700 dark:text-primary-300"
+            >
+              八、多空视角：机构投资组合经理评估
+            </h2>
+          </div>
+
+          <div class="grid md:grid-cols-2 gap-6 mb-8">
+            <!-- 可能买入的原因 -->
+            <div
+              class="card-interactive p-6 bg-green-50/60 dark:bg-green-900/20 rounded-xl shadow-md border border-green-200 dark:border-green-800"
+            >
+              <h3
+                class="font-semibold text-lg text-green-700 dark:text-green-400 mb-4 flex items-center gap-2"
+              >
+                <i data-lucide="thumbs-up" class="w-5 h-5"></i>可能买入的原因
+              </h3>
+              <ul class="space-y-3 text-sm text-gray-600 dark:text-gray-400">
+                <li class="flex items-start gap-2">
+                  <i
+                    data-lucide="check-circle"
+                    class="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5"
+                  ></i>
+                  <span
+                    ><strong>估值处于历史低位</strong>：TTM
+                    P/E仅约10.7倍，远低于行业平均15–20倍，也低于过去5年的估值中枢。如果盈利企稳，估值修复空间可观。</span
+                  >
+                </li>
+                <li class="flex items-start gap-2">
+                  <i
+                    data-lucide="check-circle"
+                    class="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5"
+                  ></i>
+                  <span
+                    ><strong>高股东回报</strong
+                    >：2026年上半年派息比例提升至100%，年化股息率约6.5%，在当前低利率环境下具有吸引力。[reference:35]</span
+                  >
+                </li>
+                <li class="flex items-start gap-2">
+                  <i
+                    data-lucide="check-circle"
+                    class="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5"
+                  ></i>
+                  <span
+                    ><strong>外卖与新业态提供第二曲线</strong
+                    >：外卖收入增速超120%，"红石榴计划"聚焦复制后有望在2027年放量，为公司带来新的增长来源。</span
+                  >
+                </li>
+                <li class="flex items-start gap-2">
+                  <i
+                    data-lucide="check-circle"
+                    class="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5"
+                  ></i>
+                  <span
+                    ><strong>创始人的回归和战略聚焦</strong
+                    >：张勇重新兼任CEO，推动中后台能力建设和流程优化，有助于在转型期提升组织效率。</span
+                  >
+                </li>
+                <li class="flex items-start gap-2">
+                  <i
+                    data-lucide="check-circle"
+                    class="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5"
+                  ></i>
+                  <span
+                    ><strong>南向资金持续流入</strong
+                    >：近20个交易日中获南向资金增持17天，累计净增持超8,000万股，显示内地资金对海底捞的配置意愿上升。[reference:36]</span
+                  >
+                </li>
+              </ul>
+            </div>
+
+            <!-- 可能回避的原因 -->
+            <div
+              class="card-interactive p-6 bg-red-50/60 dark:bg-red-900/20 rounded-xl shadow-md border border-red-200 dark:border-red-800"
+            >
+              <h3
+                class="font-semibold text-lg text-red-700 dark:text-red-400 mb-4 flex items-center gap-2"
+              >
+                <i data-lucide="thumbs-down" class="w-5 h-5"></i>可能回避的原因
+              </h3>
+              <ul class="space-y-3 text-sm text-gray-600 dark:text-gray-400">
+                <li class="flex items-start gap-2">
+                  <i
+                    data-lucide="x-circle"
+                    class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5"
+                  ></i>
+                  <span
+                    ><strong>"增收不增利"的困境尚未解决</strong
+                    >：2025年净利润下滑14%，2026年上半年仅微增0.5%。翻台率仍在3.9次/天的低位徘徊，主品牌增长引擎乏力。</span
+                  >
+                </li>
+                <li class="flex items-start gap-2">
+                  <i
+                    data-lucide="x-circle"
+                    class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5"
+                  ></i>
+                  <span
+                    ><strong>行业存量竞争加剧</strong
+                    >：火锅门店总数波动下降，价格战压力持续。海底捞的客单价下行和翻台率疲软反映其在当前消费环境中的定价权受到制约。</span
+                  >
+                </li>
+                <li class="flex items-start gap-2">
+                  <i
+                    data-lucide="x-circle"
+                    class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5"
+                  ></i>
+                  <span
+                    ><strong>新业务盈利路径不清晰</strong
+                    >：外卖业务毛利率偏低，"红石榴计划"新品牌仍处亏损爬坡期，短期内难以成为利润支柱。</span
+                  >
+                </li>
+                <li class="flex items-start gap-2">
+                  <i
+                    data-lucide="x-circle"
+                    class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5"
+                  ></i>
+                  <span
+                    ><strong>大和等机构给出保守目标价11.3港元</strong
+                    >，较当前股价仅约20%上行空间，显示部分机构对需求复苏持谨慎态度。[reference:37]</span
+                  >
+                </li>
+                <li class="flex items-start gap-2">
+                  <i
+                    data-lucide="x-circle"
+                    class="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5"
+                  ></i>
+                  <span
+                    ><strong>创始人配偶此前减持</strong
+                    >曾引发市场对"内部人信心"的疑虑，虽然不改变控制权，但对短期情绪有压制作用。</span
+                  >
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- 关键因素与投资论点 -->
+          <div
+            class="card-interactive p-8 bg-white/90 dark:bg-gray-900 rounded-xl shadow-md mb-6"
+          >
+            <h3
+              class="text-xl font-semibold text-primary-700 dark:text-primary-300 mb-4"
+            >
+              关键因素：需要密切跟踪的3个指标
+            </h3>
+            <div class="grid md:grid-cols-3 gap-4">
+              <div
+                class="p-4 bg-primary-50 dark:bg-primary-900/20 rounded-lg text-center"
+              >
+                <i
+                  data-lucide="rotate-ccw"
+                  class="w-6 h-6 mx-auto mb-2 text-primary-600 dark:text-primary-400"
+                ></i>
+                <div
+                  class="font-semibold text-sm text-primary-700 dark:text-primary-300"
+                >
+                  翻台率
+                </div>
+                <p class="text-xs text-gray-500 mt-1">
+                  能否从3.9次/天回升至4.2次以上，是判断主业复苏的最直接信号
+                </p>
+              </div>
+              <div
+                class="p-4 bg-accent-50 dark:bg-accent-900/20 rounded-lg text-center"
+              >
+                <i
+                  data-lucide="utensils"
+                  class="w-6 h-6 mx-auto mb-2 text-accent-600 dark:text-accent-400"
+                ></i>
+                <div
+                  class="font-semibold text-sm text-accent-700 dark:text-accent-300"
+                >
+                  红石榴计划的利润贡献
+                </div>
+                <p class="text-xs text-gray-500 mt-1">
+                  新品牌能否在2027年实现盈亏平衡并贡献正向利润
+                </p>
+              </div>
+              <div
+                class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg text-center"
+              >
+                <i
+                  data-lucide="percent"
+                  class="w-6 h-6 mx-auto mb-2 text-gray-600 dark:text-gray-400"
+                ></i>
+                <div
+                  class="font-semibold text-sm text-gray-700 dark:text-gray-300"
+                >
+                  派息政策的可持续性
+                </div>
+                <p class="text-xs text-gray-500 mt-1">
+                  100%派息率能否在利润承压时维持，是股东回报逻辑的基石
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- 投资论点 -->
+          <div
+            class="pl-4 pr-3 py-5 border-l-4 border-primary-500 bg-primary-50/40 dark:bg-primary-900/30 rounded-r-lg"
+          >
+            <p
+              class="text-base font-medium text-primary-900 dark:text-primary-100 leading-relaxed"
+            >
+              <i
+                data-lucide="target"
+                class="inline-block w-5 h-5 mr-2 -mt-0.5"
+              ></i>
+              <strong>投资论点：</strong
+              >海底捞是一家拥有深厚品牌护城河和卓越组织能力的行业龙头，当前正处于"旧增长模式退潮、新增长引擎尚未完全接棒"的转型期。以约10.7倍TTM
+              P/E和超过6%的股息率来看，市场对公司的悲观预期已较为充分地定价。如果2026年下半年至2027年翻台率企稳回升、"红石榴计划"实现规模化盈利、外卖业务持续高增长，公司有望迎来"盈利改善+估值修复"的戴维斯双击。对于能够承受转型期波动的长期投资者而言，当前价位提供了具有吸引力的风险回报比。但这一论点成立的前提是：<strong>消费环境不再显著恶化，且新业务能够在2027年前证明其盈利可行性。</strong>如果这一前提被推翻，海底捞可能长期停留在"低估值陷阱"中，股价在10–20倍PE区间宽幅波动。
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-primary-900 dark:bg-gray-950 text-gray-300 py-12">
+      <div class="max-w-5xl mx-auto px-6">
+        <div class="grid md:grid-cols-3 gap-8">
+          <div>
+            <h3
+              class="text-lg font-semibold text-primary-300 dark:text-primary-400 mb-4"
+            >
+              关于本报告
+            </h3>
+            <p class="text-sm text-gray-400 leading-relaxed">
+              本报告基于海底捞国际控股有限公司（06862.HK）公开财务报告、券商研报及行业数据，从商业模式、护城河、财务状况、估值、风险与多空视角等八个维度进行系统分析。
+            </p>
+          </div>
+          <div>
+            <h3
+              class="text-lg font-semibold text-primary-300 dark:text-primary-400 mb-4"
+            >
+              数据来源
+            </h3>
+            <ul class="space-y-2 text-sm text-gray-400">
+              <li>• 海底捞2025年度全年业绩公告</li>
+              <li>• 2026年中期业绩公告</li>
+              <li>• 国金证券、国泰海通、申万宏源等券商研报</li>
+              <li>• 惠誉信用评级报告</li>
+              <li>• NCBD《2026中国火锅品类发展白皮书》</li>
+            </ul>
+          </div>
+          <div>
+            <h3
+              class="text-lg font-semibold text-primary-300 dark:text-primary-400 mb-4"
+            >
+              免责声明
+            </h3>
+            <p class="text-sm text-gray-400 leading-relaxed">
+              本报告仅供教育与信息参考，不构成投资建议或买卖推荐。数据基于公开信息整理，分析观点仅代表研究判断。投资有风险，决策需谨慎。
+            </p>
+          </div>
+        </div>
+        <div
+          class="mt-8 pt-8 border-t border-gray-700 text-center text-sm text-gray-500"
+        >
+          <p>© 2026 海底捞经营分析报告 · 生成日期：2026-10-01</p>
+        </div>
+      </div>
+    </footer>
+
+    <!-- Scripts -->
+    <script>
+      window.addEventListener("scroll", () => {
+        const winScroll =
+          document.body.scrollTop || document.documentElement.scrollTop;
+        const height =
+          document.documentElement.scrollHeight -
+          document.documentElement.clientHeight;
+        const scrolled = (winScroll / height) * 100;
+        document.getElementById("progressBar").style.width = scrolled + "%";
+      });
+
+      document.addEventListener("DOMContentLoaded", function () {
+        lucide.createIcons();
+        AOS.init({ duration: 800, once: true });
+      });
+    </script>
+  </body>
+</html>
