@@ -274,7 +274,7 @@ async def start_new_chat(page) -> bool:
                 if await item.is_visible():
                     await item.click()
                     print("      已点击「对话」，进入新会话 ✓")
-                    await page.wait_for_timeout(1500)  # 等待窗口切换/清空
+                    await page.wait_for_timeout(3000)  # 等待窗口切换/清空
                     return True
             except Exception:
                 continue
