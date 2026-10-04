@@ -1,0 +1,932 @@
+你是一位资深杰出的金融研究分析师，擅长公司治理、股权结构、关联交易与激励机制分析。
+
+请以我提供的“海底捞体系全景解析”HTML 页面为样式与结构蓝本，为【标的公司】生成一份完整的体系全景解析报告，输出为单个 HTML 文件。
+
+====================
+一、输出要求
+====================
+1. 只输出 HTML 代码，不要任何解释性文字。
+2. 文件命名为：【标的公司名称】体系全景解析_YYYY-MM-DD.html(YYYY-MM-DD → 当前最新北京日期)
+3. 页面必须包含以下技术要素：
+   - Tailwind CSS CDN 及自定义主题（primary/accent 色系与模板一致）
+   - lucide 图标库
+   - AOS 滚动动画
+   - 暗色模式切换按钮（右上角）
+   - 顶部滚动进度条
+   - 响应式布局（移动端折叠导航，桌面端横向导航）
+   - 卡片悬停交互效果（card-interactive）
+   - 表格、列表、网格、moat-bar 评分条等组件复用模板样式
+4. 页面结构需与模板完全一致：
+   - Header（固定顶栏 + 导航 + 暗色切换）
+   - Hero 总览区（标题、简介、3 个核心卡片）
+   - 正文各 Section（至少包含以下六个部分）
+   - Footer（关于本页、研究范围、免责声明）
+   - 底部脚本（进度条、AOS、lucide 初始化）
+5.  HTML代码参考样例：
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>海底捞体系全景解析</title>
+<!-- Essential CDN Libraries -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+darkMode: 'class',
+theme: {
+extend: {
+colors: {
+primary: {
+50: 'hsl(20, 90%, 95%)',
+100: 'hsl(20, 90%, 85%)',
+200: 'hsl(20, 90%, 75%)',
+300: 'hsl(20, 90%, 65%)',
+400: 'hsl(20, 90%, 55%)',
+500: 'hsl(20, 90%, 50%)',
+600: 'hsl(20, 90%, 45%)',
+700: 'hsl(20, 90%, 35%)',
+800: 'hsl(20, 90%, 25%)',
+900: 'hsl(20, 90%, 15%)'
+},
+accent: {
+50: 'hsl(30, 85%, 95%)',
+100: 'hsl(30, 85%, 85%)',
+200: 'hsl(30, 85%, 75%)',
+300: 'hsl(30, 85%, 65%)',
+400: 'hsl(30, 85%, 60%)',
+500: 'hsl(30, 85%, 55%)',
+600: 'hsl(30, 85%, 50%)',
+700: 'hsl(30, 85%, 40%)',
+800: 'hsl(30, 85%, 30%)',
+900: 'hsl(30, 85%, 20%)'
+}
+}
+}
+}
+}
+</script>
+<script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+<script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+<!-- Micro-interactions & Custom Styles -->
+<style>
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  html { scroll-behavior: auto; }
+}
+.btn-interactive {
+  transition: all 0.2s ease-out;
+}
+.btn-interactive:hover {
+  transform: scale(1.05);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+.btn-interactive:active {
+  transform: scale(0.95);
+}
+.card-interactive {
+  transition: all 0.3s ease-out;
+  border: 1px solid transparent;
+  --border-lightness: 40%;
+}
+.dark .card-interactive {
+  --border-lightness: 60%;
+}
+.card-interactive:hover {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  filter: brightness(0.98);
+}
+.card-interactive[class*="primary"]:hover,
+.card-interactive[class*="white"]:hover,
+.card-interactive[class*="gray-"]:hover {
+  border-color: hsl(20, 90%, var(--border-lightness));
+}
+.card-interactive[class*="accent"]:hover {
+  border-color: hsl(30, 85%, var(--border-lightness));
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+th, td {
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 1px solid hsl(0, 0%, 90%);
+}
+.dark th, .dark td {
+  border-bottom-color: hsl(0, 0%, 30%);
+}
+/* ===== 移动端导航菜单 ===== */
+#mobileMenu {
+  display: none;
+}
+
+#mobileMenu.mobile-menu-open {
+  display: block;
+}
+
+@media (min-width: 768px) {
+  #mobileMenu {
+    display: none !important;
+  }
+}
+
+@media (max-width: 767px) {
+  header .max-w-7xl {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  header .flex.items-center.justify-between > h1 {
+    font-size: 1rem;
+    line-height: 1.25rem;
+    white-space: nowrap;
+    margin-right: 0.5rem;
+  }
+
+  #mobileMenu {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    padding-bottom: 0.5rem;
+    border-top: 1px solid rgba(20, 20, 20, 0.12);
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .dark #mobileMenu {
+    border-top-color: rgba(255, 255, 255, 0.15);
+  }
+
+  #mobileMenu a {
+    display: block;
+    width: 100%;
+    padding: 0.7rem 0.5rem;
+    border-radius: 0.5rem;
+  }
+
+  #mobileMenu a:active {
+    background: rgba(20, 20, 20, 0.06);
+  }
+
+  .dark #mobileMenu a:active {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* 桌面端导航：明确指定亮色/暗色文字，避免 dark 模式下依赖继承导致不可见 */
+@media (min-width: 768px) {
+  header nav[aria-label="桌面端导航"] a {
+    color: #374151;
+  }
+
+  .dark header nav[aria-label="桌面端导航"] a {
+    color: #e5e7eb;
+  }
+
+  header nav[aria-label="桌面端导航"] a:hover {
+    color: hsl(20, 90%, 45%);
+  }
+
+  .dark header nav[aria-label="桌面端导航"] a:hover {
+    color: hsl(20, 90%, 55%);
+  }
+}
+
+/* 防止固定 Header 在展开移动菜单时被内容裁剪 */
+header {
+  overflow: visible;
+}
+</style>
+<script>
+function toggleDarkMode() {
+document.body.classList.toggle('dark');
+const isDark = document.body.classList.contains('dark');
+document.getElementById('sunIcon').style.display = isDark ? 'block' : 'none';
+document.getElementById('moonIcon').style.display = isDark ? 'none' : 'block';
+}
+</script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen">
+<!-- Progress Bar -->
+<div class="fixed top-0 left-0 h-1 bg-primary-500 dark:bg-primary-400 z-[60] transition-all duration-300 ease-out" id="progressBar" style="width: 0%;"></div>
+<!-- Floating Header -->
+<header class="fixed top-0 left-0 right-0 z-50 backdrop-blur bg-gray-50/90 dark:bg-gray-900/90 border-b border-primary-500/20 dark:border-primary-600/20">
+<div class="max-w-7xl mx-auto px-6 py-4">
+<div class="flex items-center justify-between">
+<h1 class="text-xl font-bold text-primary-700 dark:text-primary-300">海底捞体系全景解析</h1>
+    <!-- 桌面端导航 -->
+    <nav class="hidden md:flex space-x-6 flex-shrink-0" aria-label="桌面端导航">
+      <a href="#overview" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">总览</a>
+      <a href="#founder" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">创始人</a>
+      <a href="#capital" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">股本</a>
+      <a href="#equity" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">股权</a>
+      <a href="#companies" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">关联企业</a>
+      <a href="#employee" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">员工持股</a>
+      <a href="#summary" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">总结</a>
+    </nav>
+
+    <!-- 右侧按钮 -->
+    <div class="flex items-center space-x-2 flex-shrink-0">
+      <!-- 移动端汉堡菜单 -->
+      <button
+        type="button"
+        onclick="toggleMobileMenu()"
+        class="md:hidden btn-interactive p-2 rounded-lg bg-primary-100 dark:bg-primary-800 text-primary-600 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-700 transition-all"
+        aria-label="打开或关闭导航菜单"
+        aria-controls="mobileMenu"
+        aria-expanded="false"
+        id="mobileMenuButton"
+      >
+        <i data-lucide="menu" id="mobileMenuIcon" class="w-5 h-5"></i>
+      </button>
+
+      <!-- 暗色模式 -->
+      <button
+        type="button"
+        onclick="toggleDarkMode()"
+        class="btn-interactive p-2 rounded-lg bg-primary-100 dark:bg-primary-800 text-primary-600 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-700 transition-all"
+        aria-label="切换暗色模式"
+      >
+        <i data-lucide="sun" id="sunIcon" class="w-5 h-5" style="display: none;"></i>
+        <i data-lucide="moon" id="moonIcon" class="w-5 h-5" style="display: block;"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- 移动端导航菜单 -->
+  <div id="mobileMenu" aria-hidden="true">
+    <nav class="flex flex-col space-y-1">
+      <a href="#overview" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">总览</a>
+      <a href="#founder" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">创始人</a>
+      <a href="#capital" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">股本</a>
+      <a href="#equity" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">股权</a>
+      <a href="#companies" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">关联企业</a>
+      <a href="#employee" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">员工持股</a>
+      <a href="#summary" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">总结</a>
+    </nav>
+  </div>
+</div>
+</header>
+<!-- Main Content -->
+<main class="min-h-screen">
+<!-- Hero Section -->
+<section id="overview" class="py-40 bg-primary-50/50 dark:bg-gray-900" data-aos="fade-up">
+<div class="max-w-5xl mx-auto px-6">
+<h2 class="text-4xl md:text-5xl font-bold mb-6 text-primary-700 dark:text-primary-300">
+海底捞体系全景解析
+</h2>
+<p class="text-lg text-gray-700 dark:text-gray-300 mb-8 leading-relaxed">
+本页系统梳理了围绕海底捞的核心议题：创始人张勇的成长与战略演进、公司股本数量变化、股权结构演变、关联上市公司关系与财务影响，以及员工持股与激励机制。通过把公司治理、资本运作、经营表现与组织文化放在同一框架内，帮助你快速理解“海底捞”这家企业的全貌。
+</p>
+    <div class="grid md:grid-cols-3 gap-6 mt-12">
+      <div class="card-interactive p-6 bg-white/90 backdrop-blur-sm dark:bg-gray-800 rounded-xl shadow-md">
+        <div class="flex items-center space-x-4 mb-4">
+          <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
+            <i data-lucide="user" class="w-6 h-6 text-primary-600 dark:text-primary-400"></i>
+          </div>
+          <h3 class="text-lg font-semibold text-primary-700 dark:text-primary-300">创始人发展</h3>
+        </div>
+        <p class="text-sm text-gray-700 dark:text-gray-300">
+          张勇从创业到重返CEO的战略迭代
+        </p>
+      </div>
+      <div class="card-interactive p-6 bg-white/90 backdrop-blur-sm dark:bg-gray-800 rounded-xl shadow-md">
+        <div class="flex items-center space-x-4 mb-4">
+          <div class="flex-shrink-0 w-12 h-12 bg-accent-100 dark:bg-accent-900/30 rounded-lg flex items-center justify-center">
+            <i data-lucide="database" class="w-6 h-6 text-accent-600 dark:text-accent-400"></i>
+          </div>
+          <h3 class="text-lg font-semibold text-accent-700 dark:text-accent-300">股本与股权</h3>
+        </div>
+        <p class="text-sm text-gray-700 dark:text-gray-300">
+          股本数量、控制权与家族信托安排
+        </p>
+      </div>
+      <div class="card-interactive p-6 bg-white/90 backdrop-blur-sm dark:bg-gray-800 rounded-xl shadow-md">
+        <div class="flex items-center space-x-4 mb-4">
+          <div class="flex-shrink-0 w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
+            <i data-lucide="pie-chart" class="w-6 h-6 text-primary-600 dark:text-primary-400"></i>
+          </div>
+          <h3 class="text-lg font-semibold text-primary-700 dark:text-primary-300">关联与激励</h3>
+        </div>
+        <p class="text-sm text-gray-700 dark:text-gray-300">
+          上市公司矩阵与员工利益绑定
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- Section 1: 创始人发展 -->
+<section id="founder" class="py-20 bg-white/80 dark:bg-gray-900" data-aos="fade-up">
+  <div class="max-w-5xl mx-auto px-6">
+    <h2 class="text-3xl font-bold mb-8 text-primary-700 dark:text-primary-300">
+      创始人张勇的发展历程与战略重心迁移
+    </h2>
+    <div class="space-y-6">
+      <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+        张勇的创业路径并非线性，而是在“高速扩张—战略收缩—组织再造—多元孵化”之间反复迭代。其个人身份也从创始人、董事长，到在关键节点重新回归CEO岗位，体现出公司从“门店驱动”向“总部中台驱动”的深层转变。
+      </p>
+      <div class="pl-4 pr-3 py-3 border-l-4 border-primary-500 bg-primary-50/40 dark:bg-primary-900/30 rounded-r-lg">
+        <p class="text-sm font-medium text-primary-900 dark:text-primary-100 leading-relaxed">
+          <i data-lucide="info" class="inline-block w-4 h-4 mr-1.5 -mt-0.5"></i>
+          关键转折：2026年1月，张勇重新担任海底捞CEO，同时推进“红石榴计划”与中后台能力建设，标志着公司进入新的组织阶段。
+        </p>
+      </div>
+      <div class="grid md:grid-cols-2 gap-6 mt-8">
+        <div class="card-interactive p-6 bg-primary-50/50 dark:bg-primary-900/20 rounded-xl shadow-md">
+          <h3 class="text-lg font-semibold text-primary-700 dark:text-primary-300 mb-4">早期：门店与师徒制</h3>
+          <ul class="space-y-3">
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">以“服务+师徒制”构建底层管理文化</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">高度依赖店长与一线员工的主观能动性</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">扩张逻辑：先开店，再优化单店模型</span>
+            </li>
+          </ul>
+        </div>
+        <div class="card-interactive p-6 bg-accent-50/50 dark:bg-accent-900/20 rounded-xl shadow-md">
+          <h3 class="text-lg font-semibold text-accent-700 dark:text-accent-300 mb-4">中期：资本化与调整</h3>
+          <ul class="space-y-3">
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">2018年上市，股本与组织架构固化</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">2021年“啄木鸟计划”大规模关店，纠正粗放扩张</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">2022年“硬骨头计划”恢复部分优质门店</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <div class="mt-8">
+        <h3 class="text-xl font-semibold text-primary-700 dark:text-primary-300 mb-4">
+          近年：张勇回归与“红石榴计划”
+        </h3>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          2024年起，海底捞推出“红石榴计划”，孵化多品牌矩阵，包括小火锅、寿司、烤肉等新业态。2025年，该计划从内部孵化全面转向市场扩张，截至年末已运营20个子品牌共207家餐厅，涵盖海鲜大排档、寿司、西式轻食、小火锅及中式快餐等细分领域；其他餐厅经营收入达到15.21亿元，同比增长214.6%。2026年1月，张勇重新担任CEO，同时推动流程智能化与中后台建设，这被市场解读为希望通过“总部能力”替代部分单店决策，以提升效率并降低不确定性。张勇回归后主要围绕三条主线推进业务：稳住火锅主业、持续推进“红石榴计划”、加大智能中台建设。此外，他上任第二天即完成了2021年发行的6亿美元债中剩余2.85亿美元的赎回。[reference:0]
+        </p>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          与此同时，公司也进入“增收不增利”阶段：2026年上半年，海底捞营业收入同比增长7.9%至223.37亿元，但归母净利润仅微增0.5%至17.67亿元，传统主业增长承压，外卖与新业务成为主要收入增量。
+        </p>
+        <div class="card-interactive p-6 bg-accent-50/50 dark:bg-accent-900/20 rounded-xl shadow-md mt-6">
+          <h3 class="text-lg font-semibold text-accent-700 dark:text-accent-300 mb-4">张勇回归后的管理哲学变化</h3>
+          <ul class="space-y-3">
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300"><strong>弱化门店考核，强化中台建设。</strong>张勇回归后明确表示，产生管理乱象的根源是“多年来董事会过度激励店长，弱化总部职能建设”，并宣布“在一年内强化中台建设，完善精益化管理，弱化对门店的考核”。[reference:1]</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300"><strong>任命四位女性执行董事。</strong>2026年1月13日，李娜娜、朱银花、焦德凤及朱轩宜四位女士获委任为公司执行董事。四位董事均长期在海底捞体系内成长，最早加入的李娜娜于2005年10月入职，在集团若干门店及区域担任店经理及教练职务。[reference:2]</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300"><strong>“二次创业”定位。</strong>不少海底捞内部人士直言，当下海底捞正在进行“二次创业”——从单一火锅品牌向多品牌餐饮生态转型。</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- Section 2: 股本数量变化 -->
+<section id="capital" class="py-20 bg-primary-50/50 dark:bg-gray-800" data-aos="fade-up">
+  <div class="max-w-5xl mx-auto px-6">
+    <h2 class="text-3xl font-bold mb-8 text-primary-700 dark:text-primary-300">
+      股本数量变化过程：从IPO到股东减持
+    </h2>
+    <div class="space-y-6">
+      <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+        海底捞的股本结构自上市后基本稳定，未进行大规模增发或转增。公司总股本长期保持在约55.74亿股。近期唯一重大的“变化”并非总股本扩张，而是股东之间的存量股份转让，即创始人之妻舒萍通过SP NP减持2.59亿股，套现约27.5亿港元，但公司总股本并未因此增加。
+      </p>
+      <div class="grid md:grid-cols-2 gap-6 mt-8">
+        <div class="card-interactive p-6 bg-white/90 backdrop-blur-sm dark:bg-gray-900 rounded-xl shadow-md">
+          <h3 class="text-lg font-semibold text-primary-700 dark:text-primary-300 mb-4">股本关键节点</h3>
+          <ul class="space-y-3">
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">2018年IPO后，总股本约55.74亿股</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">2018-2026年，无大规模增发或转增，总股本保持稳定</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">2026年9月，股东间股份转让2.59亿股，不改变总股本</span>
+            </li>
+          </ul>
+        </div>
+        <div class="card-interactive p-6 bg-white/90 backdrop-blur-sm dark:bg-gray-900 rounded-xl shadow-md">
+          <h3 class="text-lg font-semibold text-accent-700 dark:text-accent-300 mb-4">2026年9月减持概览</h3>
+          <div class="space-y-3">
+            <div class="flex justify-between items-center">
+              <span class="text-sm text-gray-700 dark:text-gray-300">减持股数</span>
+              <span class="text-base font-semibold text-accent-600 dark:text-accent-400">2.59亿股</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-sm text-gray-700 dark:text-gray-300">占总股本</span>
+              <span class="text-base font-semibold text-accent-600 dark:text-accent-400">约4.65%</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-sm text-gray-700 dark:text-gray-300">减持价格</span>
+              <span class="text-base font-semibold text-accent-600 dark:text-accent-400">10.62港元/股</span>
+            </div>
+            <div class="flex justify-between items-center">
+              <span class="text-sm text-gray-700 dark:text-gray-300">套现金额</span>
+              <span class="text-base font-semibold text-accent-600 dark:text-accent-400">27.5亿港元</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mt-8 pl-4 pr-3 py-3 border-l-4 border-accent-500 bg-accent-50/40 dark:bg-accent-900/30 rounded-r-lg">
+        <p class="text-sm font-medium text-accent-900 dark:text-accent-100 leading-relaxed">
+          <i data-lucide="alert-triangle" class="inline-block w-4 h-4 mr-1.5 -mt-0.5"></i>
+          市场反应：该减持被解读为创始人家庭在税务与财富管理上的操作，叠加公司增长故事转换期，短期对股价造成压力。需要指出的是，张勇于2026年4月宣布以自有资金增持不少于1亿港元的公司股份，并于5月以平均价约13.39港元完成增持1,135万股（价值约1.52亿港元），与减持操作形成对冲信号。[reference:3]
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- Section 3: 股权结构变化 -->
+<section id="equity" class="py-20 bg-white/80 dark:bg-gray-900" data-aos="fade-up">
+  <div class="max-w-5xl mx-auto px-6">
+    <h2 class="text-3xl font-bold mb-8 text-accent-700 dark:text-accent-300">
+      股权结构变化：从集中到集中，控制权不变
+    </h2>
+    <div class="space-y-6">
+      <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+        海底捞的股权结构一直由创始人家族通过特殊目的实体和家族信托等安排保持高度控制。2026年9月的减持虽然降低了控股股东集团的持股比例，但控制权并未因此改变，张勇及其一致行动人仍持有约45.49%的股份及投票权，公司战略与日常经营保持稳定。
+      </p>
+      <div class="grid md:grid-cols-2 gap-6 mt-8">
+        <div class="card-interactive p-6 bg-accent-50/50 dark:bg-accent-900/20 rounded-xl shadow-md">
+          <h3 class="text-lg font-semibold text-accent-700 dark:text-accent-300 mb-4">早期与上市后控制结构</h3>
+          <ul class="space-y-3">
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">通过BVI/家族信托集中持股</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">上市后，控制权持续由创始人掌握</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">2018年IPO后，股本与控制权格局固化</span>
+            </li>
+          </ul>
+        </div>
+        <div class="card-interactive p-6 bg-accent-50/50 dark:bg-accent-900/20 rounded-xl shadow-md">
+          <h3 class="text-lg font-semibold text-accent-700 dark:text-accent-300 mb-4">2025-2026年调整</h3>
+          <ul class="space-y-3">
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">2025年内部股权调整，进一步明确控制权</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">2026年9月SP NP减持2.59亿股</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">控股股东集团持股降至约45.49%，但控制权稳固</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <div class="mt-8">
+        <h3 class="text-xl font-semibold text-accent-700 dark:text-accent-300 mb-4">
+          家族信托与资本运作
+        </h3>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          市场公开信息显示，创始人家族通过特殊目的实体（如SP NP Ltd.）等安排持有股份，并通过家族信托进行资产隔离与财富管理。完整的股权链条为：张勇夫妇→境外家族信托（瑞银信托为受托人）→BVI控股平台→开曼上市主体→境内外商独资运营实体。信托架构实现了所有权、受益权、控制权的隔离，这是创始人家族“以少量实股锁定控制权”的关键。张勇及舒萍及其家族信托持有ZY NP LTD及SP NP LTD，在股权分派后合共持有海底捞约49.92%。[reference:4]
+        </p>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          与此同时，联合创始人施永宏夫妇通过SYH NP LTD及LHY NP LTD持有海底捞约18.69%股份。截至2025年12月31日，施永宏持股量为1,069,071,878股，占总股本19.18%。[reference:5]
+        </p>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+          此次减持并非公司发行新股，而是既有股份在不同股东主体间的转移。因此，公司总股本未变，但股权结构更加多元化，公众持股比例有所提升。
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- Section 4: 关联上市公司关系 -->
+<section id="companies" class="py-20 bg-accent-50/50 dark:bg-gray-800" data-aos="fade-up">
+  <div class="max-w-6xl mx-auto px-6">
+    <h2 class="text-3xl font-bold mb-8 text-accent-700 dark:text-accent-300">
+      关联上市公司：海底捞、颐海国际与特海国际
+    </h2>
+    <div class="space-y-6">
+      <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+        海底捞通过分拆上市与业务划分，形成了“主品牌+调味料+海外业务”的上市矩阵。三者通过股权、关联交易与业务协同深度绑定，共同构成“海底捞系”资本版图。
+      </p>
+      <div class="grid md:grid-cols-3 gap-6 mt-8">
+        <div class="card-interactive p-6 bg-white/90 backdrop-blur-sm dark:bg-gray-900 rounded-xl shadow-md">
+          <div class="flex items-center space-x-3 mb-4">
+            <div class="flex-shrink-0 w-10 h-10 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
+              <i data-lucide="building-2" class="w-5 h-5 text-primary-600 dark:text-primary-400"></i>
+            </div>
+            <h3 class="text-lg font-semibold text-primary-700 dark:text-primary-300">海底捞国际控股 (06862.HK)</h3>
+          </div>
+          <p class="text-sm text-gray-700 dark:text-gray-300 mb-2">主品牌火锅餐厅运营主体</p>
+          <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+            <li>2025年营收432.25亿元，净利润40.42亿元</li>
+            <li>2026年上半年营收223.37亿元，净利润17.67亿元</li>
+            <li>推进“红石榴计划”与多品牌孵化</li>
+          </ul>
+        </div>
+        <div class="card-interactive p-6 bg-white/90 backdrop-blur-sm dark:bg-gray-900 rounded-xl shadow-md">
+          <div class="flex items-center space-x-3 mb-4">
+            <div class="flex-shrink-0 w-10 h-10 bg-accent-100 dark:bg-accent-900/30 rounded-lg flex items-center justify-center">
+              <i data-lucide="utensils" class="w-5 h-5 text-accent-600 dark:text-accent-400"></i>
+            </div>
+            <h3 class="text-lg font-semibold text-accent-700 dark:text-accent-300">颐海国际 (01579.HK)</h3>
+          </div>
+          <p class="text-sm text-gray-700 dark:text-gray-300 mb-2">复合调味料与零售食品业务</p>
+          <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+            <li>2025年营收66.13亿元，同比+1.1%</li>
+            <li>归母净利润8.54亿元，同比+15.5%</li>
+            <li>关联方收入下降7.2%，第三方收入增长4.7%</li>
+            <li>B端餐饮渠道收入高增73%，分红率达92%</li>
+          </ul>
+        </div>
+        <div class="card-interactive p-6 bg-white/90 backdrop-blur-sm dark:bg-gray-900 rounded-xl shadow-md">
+          <div class="flex items-center space-x-3 mb-4">
+            <div class="flex-shrink-0 w-10 h-10 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
+              <i data-lucide="globe" class="w-5 h-5 text-primary-600 dark:text-primary-400"></i>
+            </div>
+            <h3 class="text-lg font-semibold text-primary-700 dark:text-primary-300">特海国际 (09658.HK / HDL.US)</h3>
+          </div>
+          <p class="text-sm text-gray-700 dark:text-gray-300 mb-2">大中华区以外海底捞餐厅运营主体</p>
+          <ul class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+            <li>2025年营收8.41亿美元，同比+8.0%</li>
+            <li>净利润3,633.8万美元，同比+69.8%</li>
+            <li>整体翻台率3.9次/天，同店翻台率4.0次/天</li>
+            <li>餐厅层面经营利润率8.7%，同比下降1.4个百分点</li>
+          </ul>
+        </div>
+      </div>
+      <div class="mt-8">
+        <h3 class="text-xl font-semibold text-accent-700 dark:text-accent-300 mb-4">
+          经营与财务关联关系
+        </h3>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          颐海国际作为关联供应商，与海底捞在调味料和零售产品上保持长期协同。值得关注的是，颐海国际的关联方收入同比下降7.2%，而第三方收入增长4.7%，B端餐饮渠道收入高增73%，表明颐海国际正在逐步降低对海底捞的依赖，这对海底捞而言意味着供应链议价能力可能面临长期变化。[reference:6]
+        </p>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          特海国际完全负责海底捞海外门店的运营，其业绩直接影响海底捞整体财务表现。2025年特海国际餐厅层面经营利润率为8.7%，较2024年同期下降1.4个百分点，主要反映公司在员工激励、产品质价比提升及门店体验升级方面的主动投入。[reference:7]例如，2026年上半年特海国际因汇兑损失导致归母净利润大幅下滑，也对海底捞的合并利润表造成拖累。
+        </p>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+          与此同时，海底捞的主业收入结构与利润率也在变化：2026年上半年，外卖收入同比增长121.2%至20.51亿元，其他餐厅收入同比增长113.1%至12.71亿元，但这两部分毛利率相对较低，导致整体利润增速明显慢于收入增速。
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- Section 5: 员工持股与激励 -->
+<section id="employee" class="py-20 bg-white/80 dark:bg-gray-900" data-aos="fade-up">
+  <div class="max-w-5xl mx-auto px-6">
+    <h2 class="text-3xl font-bold mb-8 text-primary-700 dark:text-primary-300">
+      员工持股与激励机制：从“利益共同体”到“事业共同体”
+    </h2>
+    <div class="space-y-6">
+      <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+        海底捞并非“全员持股”，但通过多层次激励，将员工利益与公司发展深度绑定。核心逻辑是“连住利益，锁住管理”：核心骨干分享公司成长，基层员工通过绩效与福利获得即时回报，从而降低流动率并保持服务稳定性。
+      </p>
+      <div class="grid md:grid-cols-2 gap-6 mt-8">
+        <div class="card-interactive p-6 bg-primary-50/50 dark:bg-primary-900/20 rounded-xl shadow-md">
+          <h3 class="text-lg font-semibold text-primary-700 dark:text-primary-300 mb-4">核心与骨干层</h3>
+          <ul class="space-y-3">
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">股份奖励计划与长期股权激励</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">虚拟股/受限股等长期绑定机制</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">与门店/区域利润挂钩的分红权</span>
+            </li>
+          </ul>
+        </div>
+        <div class="card-interactive p-6 bg-accent-50/50 dark:bg-accent-900/20 rounded-xl shadow-md">
+          <h3 class="text-lg font-semibold text-accent-700 dark:text-accent-300 mb-4">基层与全员</h3>
+          <ul class="space-y-3">
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">计件工资与绩效奖金</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">父母补贴、子女教育信托等家庭关怀</span>
+            </li>
+            <li class="flex items-start space-x-3">
+              <i data-lucide="check" class="w-5 h-5 text-accent-600 dark:text-accent-400 flex-shrink-0 mt-0.5"></i>
+              <span class="text-sm text-gray-700 dark:text-gray-300">“贡献星”评价与晋升通道</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <div class="mt-8">
+        <h3 class="text-xl font-semibold text-primary-700 dark:text-primary-300 mb-4">
+          师徒制量化机制：虚拟分红方案
+        </h3>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          海底捞全部门店均为直营，店长不持有任何门店工商股权。师徒制是一套独立于工商股权之外的虚拟利润分红激励制度。店长每年可以二选一获取激励报酬：<strong>方案A</strong>，只拿自己管理门店利润的2.8%；<strong>方案B</strong>，本店利润0.4%+徒弟门店利润3.1%+徒孙门店利润1.5%。[reference:8]这一机制解释了为什么店长有强烈动力培养徒弟——徒弟越多，收入越高。
+        </p>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          培养足够多合格店长后可晋升家族长，管理一整个门店家族，享受家族利润池分红。抱团组织通常包括5至18家门店，由有能力的店长担任组长。门店评级为C级会被限制开店，两次C级就会斩断该师傅与徒子徒孙的全部分红关联，倒逼师傅持续做好人才培养与门店管控。
+        </p>
+      </div>
+      <div class="mt-8">
+        <h3 class="text-xl font-semibold text-primary-700 dark:text-primary-300 mb-4">
+          文化与晋升的“隐性股权”
+        </h3>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          除了股权与现金，海底捞独特的师徒制、家族长文化和清晰的晋升路径，本身就是员工的重要“心理股权”。这种机制让员工相信，只要持续贡献，就能获得长期回报与社会认可，从而降低组织内耗，提升执行力。门店员工实行“计件工资+创新激励”双轨道模式，服务员每上一桌菜、送一次小吃都能累积工分，多劳多得。
+        </p>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          张勇回归后，海底捞成立了“员工权益保障专项小组”，持续征集违规线索，核实后进行款项退还及责任追究。全体在职及离职伙伴在过去遇到的各类违反公司制度的不合理处罚，均可反馈，经核实后将第一时间退还、纠正。这一机制在原有激励体系之上增加了权益保障维度。[reference:9]
+        </p>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+          因此，员工持股并不仅限于“拥有股份”，更体现在“拥有成长路径、拥有家庭保障、拥有被信任感”。这种综合激励，是海底捞长期保持服务效率和组织稳定的关键之一。
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- Section 6: 综合研判 -->
+<section id="summary" class="py-20 bg-accent-50/50 dark:bg-gray-800" data-aos="fade-up">
+  <div class="max-w-5xl mx-auto px-6">
+    <h2 class="text-3xl font-bold mb-8 text-accent-700 dark:text-accent-300">
+      综合研判与关键结论
+    </h2>
+    <div class="space-y-6">
+      <div class="card-interactive p-8 bg-white/90 backdrop-blur-sm dark:bg-gray-900 rounded-xl shadow-md">
+        <h3 class="text-xl font-semibold text-accent-700 dark:text-accent-300 mb-4">
+          1. 组织与战略进入“新阶段”
+        </h3>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          海底捞正从“单店驱动”向“总部中台驱动”转型，2026年被公司定义为“中后台能力建设元年”。这意味着公司将更多依靠产品规划、供应链、数字化与流程标准化来提升效率，而非单纯依赖开新店。张勇重新担任CEO，也是在为这一转型背书。
+        </p>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+          但高盛等机构提醒，过度强调中后台可能削弱一线门店的灵活性，这对海底捞赖以生存的“门店导向”文化构成挑战。
+        </p>
+      </div>
+      <div class="card-interactive p-8 bg-white/90 backdrop-blur-sm dark:bg-gray-900 rounded-xl shadow-md">
+        <h3 class="text-xl font-semibold text-accent-700 dark:text-accent-300 mb-4">
+          2. 财务上“增收不增利”压力显现
+        </h3>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          2025年公司净利润下滑14%至40.42亿元，2026年上半年净利润仅微增0.5%至17.67亿元。传统堂食主业翻台率难以进一步提升，而外卖、多品牌等新业务虽然收入增长快，但毛利率低，短期内难以替代主业利润贡献。
+        </p>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+          因此，公司股价与市值也从2021年高点4500亿港元回落至约550亿港元，反映市场对增长故事的重新定价。
+        </p>
+      </div>
+      <div class="card-interactive p-8 bg-white/90 backdrop-blur-sm dark:bg-gray-900 rounded-xl shadow-md">
+        <h3 class="text-xl font-semibold text-accent-700 dark:text-accent-300 mb-4">
+          3. 关联上市公司与员工激励是“稳定器”
+        </h3>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+          颐海国际与特海国际为公司提供了供应链协同和海外增长空间；而员工持股与福利体系则为组织提供了稳定性和执行力。在战略转换期，这种“内外协同”有助于降低波动。
+        </p>
+        <p class="text-gray-700 dark:text-gray-300 leading-relaxed">
+          未来，投资者需重点观察“红石榴计划”能否真正孵化出第二增长曲线，以及中后台能力建设能否在不牺牲一线活力的前提下提升整体利润率。
+        </p>
+      </div>
+      <div class="card-interactive p-8 bg-white/90 backdrop-blur-sm dark:bg-gray-900 rounded-xl shadow-md">
+        <h3 class="text-xl font-semibold text-accent-700 dark:text-accent-300 mb-4">
+          4. 组织风险提示
+        </h3>
+        <div class="space-y-4">
+          <div class="pl-4 pr-3 py-3 border-l-4 border-accent-500 bg-accent-50/40 dark:bg-accent-900/30 rounded-r-lg">
+            <p class="text-sm font-medium text-accent-900 dark:text-accent-100 leading-relaxed">
+              <i data-lucide="alert-circle" class="inline-block w-4 h-4 mr-1.5 -mt-0.5"></i>
+              <strong>师徒制内生的组织矛盾。</strong>随着海底捞走出规模性扩张，员工上升空间变得相对有限——2025年直营店全年净减少51家，员工总数125,620人，较2024年末继续收缩。师徒制的裂变式增长依赖于持续开店，当开店速度放缓时，店长晋升通道收窄，可能影响核心员工的积极性。这是海底捞组织模式面临的结构性挑战。[reference:10]
+            </p>
+          </div>
+          <div class="pl-4 pr-3 py-3 border-l-4 border-primary-500 bg-primary-50/40 dark:bg-primary-900/30 rounded-r-lg">
+            <p class="text-sm font-medium text-primary-900 dark:text-primary-100 leading-relaxed">
+              <i data-lucide="alert-circle" class="inline-block w-4 h-4 mr-1.5 -mt-0.5"></i>
+              <strong>弱化考核的执行风险。</strong>张勇推行弱化门店考核，在餐饮市场持续承压的背景下存在一定风险——多位全国性餐饮品牌创始人均强调增长压力，在价格战下能维持规模不下滑就是胜利。如何在“捍卫价值观”与“保持运营效率”之间取得平衡，是张勇回归后的核心管理课题。[reference:11]
+            </p>
+          </div>
+          <div class="pl-4 pr-3 py-3 border-l-4 border-accent-500 bg-accent-50/40 dark:bg-accent-900/30 rounded-r-lg">
+            <p class="text-sm font-medium text-accent-900 dark:text-accent-100 leading-relaxed">
+              <i data-lucide="alert-circle" class="inline-block w-4 h-4 mr-1.5 -mt-0.5"></i>
+              <strong>红石榴计划的规模化考验。</strong>截至2025年底，红石榴计划运营20个品牌、合计207家餐厅。“焰请烤肉铺子”等新品牌增速较快，但真正的考验在于能否将新品牌的规模化跑通，在激烈的餐饮细分市场竞争中建立护城河，并最终转化为集团稳定的利润来源。[reference:12]
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="mt-8 pl-4 pr-3 py-3 border-l-4 border-primary-500 bg-primary-50/40 dark:bg-primary-900/30 rounded-r-lg">
+        <p class="text-sm font-medium text-primary-900 dark:text-primary-100 leading-relaxed">
+          <i data-lucide="trending-up" class="inline-block w-4 h-4 mr-1.5 -mt-0.5"></i>
+          一句话总结：海底捞的故事并未结束，而是进入了一个“不再靠开店驱动、而是靠能力驱动”的新篇章。能否成功转型，将决定它能否穿越下一个十年。
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="bg-primary-900 dark:bg-gray-950 text-gray-300 py-12">
+<div class="max-w-5xl mx-auto px-6">
+<div class="grid md:grid-cols-3 gap-8">
+<div>
+<h3 class="text-lg font-semibold text-primary-300 dark:text-primary-400 mb-4">关于本页面</h3>
+<p class="text-sm text-gray-400 leading-relaxed">
+本页综合公司公告、市场公开数据与本研究分析，系统梳理海底捞的创始人历程、股本与股权变化、关联企业关系与员工激励机制。
+</p>
+</div>
+<div>
+<h3 class="text-lg font-semibold text-primary-300 dark:text-primary-400 mb-4">研究范围</h3>
+<ul class="space-y-2 text-sm text-gray-400">
+<li>• 创始人战略演进</li>
+<li>• 股本数量变化</li>
+<li>• 股权结构与控制权</li>
+<li>• 关联上市公司关系</li>
+<li>• 员工持股与激励</li>
+</ul>
+</div>
+<div>
+<h3 class="text-lg font-semibold text-primary-300 dark:text-primary-400 mb-4">免责声明</h3>
+<p class="text-sm text-gray-400 leading-relaxed">
+本页面仅供教育与信息参考，不构成投资建议。数据基于公开信息整理，分析观点仅供参考。
+</p>
+</div>
+</div>
+<div class="mt-8 pt-8 border-t border-gray-700 text-center text-sm text-gray-500">
+<p>© 2026 海底捞体系全景研究。保留所有权利。</p>
+</div>
+</div>
+</footer>
+<!-- Scripts -->
+<script>
+function toggleMobileMenu() {
+  const menu = document.getElementById('mobileMenu');
+  const button = document.getElementById('mobileMenuButton');
+  const icon = document.getElementById('mobileMenuIcon');
+
+  if (!menu) return;
+
+  const isOpen = menu.classList.toggle('mobile-menu-open');
+
+  menu.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+
+  if (button) {
+    button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  }
+
+  if (icon) {
+    icon.setAttribute('data-lucide', isOpen ? 'x' : 'menu');
+    lucide.createIcons();
+  }
+}
+
+function closeMobileMenu() {
+  const menu = document.getElementById('mobileMenu');
+  const button = document.getElementById('mobileMenuButton');
+  const icon = document.getElementById('mobileMenuIcon');
+
+  if (!menu) return;
+
+  menu.classList.remove('mobile-menu-open');
+  menu.setAttribute('aria-hidden', 'true');
+
+  if (button) {
+    button.setAttribute('aria-expanded', 'false');
+  }
+
+  if (icon) {
+    icon.setAttribute('data-lucide', 'menu');
+    lucide.createIcons();
+  }
+}
+
+// Progress Bar
+window.addEventListener('scroll', () => {
+const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+const scrolled = (winScroll / height) * 100;
+document.getElementById('progressBar').style.width = scrolled + '%';
+});
+// Initialize AOS & Lucide
+document.addEventListener('DOMContentLoaded', function() {
+  lucide.createIcons();
+  AOS.init({ duration: 800, once: true });
+
+  // 点击移动端导航后自动收起菜单
+  document.querySelectorAll('#mobileMenu a').forEach(link => {
+    link.addEventListener('click', () => {
+      closeMobileMenu();
+    });
+  });
+
+  // Citation System
+  let i = 1, map = new Map();
+  document.querySelectorAll('[data-ref]').forEach(el => {
+    if (el.dataset.citationProcessed) return;
+    const raw = (el.getAttribute('data-ref')||'').trim();
+    if (!raw) return;
+    const parts = raw.split('|');
+    const url = parts[0].trim();
+    const idx = (parts[1]||'').trim() || map.get(raw) || (map.set(raw, String(i)), String(i++));
+    if (!el.textContent || !el.textContent.trim()) { el.dataset.citationProcessed = 'true'; return; }
+    const btn = document.createElement('sup'); btn.textContent = String(idx);
+    Object.assign(btn.style, { fontSize:'8px', color:'#fff', cursor:'pointer', top: '1px', fontWeight:'bold', backgroundColor:'#0284c7', borderRadius:'50%', transition:'all .15s', userSelect:'none', minWidth:'19px', height:'19px', marginLeft:'6px', display:'inline-flex', alignItems:'center', justifyContent:'center', boxShadow:'0 1px 3px rgba(0,0,0,.2)', lineHeight:'1'});
+    btn.addEventListener('mouseenter', ()=> Object.assign(btn.style, { backgroundColor:'#0369a1', transform:'scale(1.12)' }));
+    btn.addEventListener('mouseleave', ()=> Object.assign(btn.style, { backgroundColor:'#0284c7', transform:'scale(1)' }));
+    btn.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); window.open(url, '_blank'); });
+    el.appendChild(btn); el.dataset.citationProcessed = 'true';
+  });
+});
+</script>
+</body>
+</html>
+
+====================
+二、内容框架（六个核心章节）
+====================
+请为【标的公司】撰写以下六个部分，每部分需包含分析文字、卡片、列表、表格等元素，数据必须基于最近公开年报、公告及券商研报，并注明来源（可用 [reference] 标记）。
+
+1. 创始人/核心管理层发展
+   - 创业历程与战略演进
+   - 关键转折点（如重新出山、组织变革、战略调整）
+   - 管理哲学变化（考核机制、中台建设、人事任命）
+   - 近期战略重点
+
+2. 股本数量变化
+   - IPO 及历次股本变动（增发、回购、转增）
+   - 大股东增减持记录
+   - 当前总股本与市值
+   - 关键节点表格或卡片
+
+3. 股权结构变化
+   - 实际控制人及一致行动人
+   - 家族信托/控股平台架构
+   - 主要股东持股比例
+   - 控制权稳定性分析
+   - 股权结构演变时间线
+
+4. 关联上市公司/企业关系
+   - 上市矩阵（如有分拆上市）
+   - 核心关联公司业务与财务数据
+   - 关联交易分析
+   - 业务协同与风险
+
+5. 员工持股与激励机制
+   - 股权激励计划（期权、限制性股票、虚拟股）
+   - 薪酬与绩效考核体系
+   - 特色激励机制（如师徒制、合伙人制度）
+   - 员工权益保障机制
+   - 激励效果与潜在矛盾
+
+6. 综合研判与关键结论
+   - 组织与战略阶段判断
+   - 财务表现核心矛盾（增收不增利、利润率变化等）
+   - 关联公司与员工激励的稳定器作用
+   - 风险提示（组织风险、执行风险、新业务考验）
+   - 一句话总结
+
+====================
+三、数据与风格要求
+====================
+- 数据需准确、最新，优先使用最近一个完整财年及最新中期报告。
+- 财务数字保留两位小数，注明单位（亿元/亿美元/港元等）。
+- 语言专业但通俗，兼顾深度与可读性。
+- 若某些板块（如关联上市公司）不适用，可改为“子公司/参股公司关系”或合理省略，但整体结构保持完整。
+- 所有图标使用 lucide 图标名称（如 user, database, pie-chart, building-2, utensils, globe, shield, award, alert-triangle 等）。
+- 评分条（moat-bar）可用于管理层能力、护城河等维度，如无则不用。
+
+====================
+四、占位符替换说明
+====================
+生成时请自动替换以下占位符：
+- 【标的公司】→ 实际公司名称
+- YYYY-MM-DD → 当前日期
+- 所有 [reference] 标记可保留或替换为具体来源链接
+- 页面标题、Header 标题、Hero 标题均使用公司名称
+
+请直接生成完整 HTML 代码。
