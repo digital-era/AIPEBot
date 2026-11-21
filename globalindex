@@ -1,0 +1,19 @@
+1. 美元指数与全球外汇（kind: "fx"）
+美元指数：DXY / USDX / DX-Y.NYB / DINIW / UDI / .DXY / DX=F
+→ 对应新浪代码 DINIW[1][2]
+外汇货币对：USDCNY、USDCNH、EURUSD、USDJPY、GBPUSD、AUDUSD、USDCAD、USDCHF、USDHKD 等（支持 fx_s*、=X、/、- 格式）
+→ 对应新浪代码 fx_susdcny、fx_susdcnh、fx_seurusd 等（自动拼成 fx_s + 小写货币对）[2][3][4]
+2. 国际大宗商品（kind: "commodity"）
+贵金属：
+COMEX 黄金（GC=F / GOLD / hf_GC）→ hf_GC[5][6]
+伦敦现货金（XAUUSD / XAUUSD=X / XAU / hf_XAU）→ hf_XAU[3][6]
+COMEX 白银（SI=F / SILVER / hf_SI）→ hf_SI[5]
+伦敦现货银（XAGUSD / XAGUSD=X / XAG / hf_XAG）→ hf_XAG
+铂金（PL=F / hf_PL）→ hf_PL、钯金（PA=F / hf_PA）→ hf_PA
+能源：
+WTI 原油（CL=F / WTI / USOIL / CRUDE / hf_CL）→ hf_CL[5][7]
+布伦特原油（BZ=F / BRENT / UKOIL / hf_OIL）→ hf_OIL[5]
+天然气（NG=F / NATGAS / hf_NG）→ hf_NG
+工业金属 & 农产品：
+铜（HG=F / COPPER / hf_HG → hf_HG；hf_CAD → hf_CAD）[7]
+CBOT 玉米（ZC=F / hf_ZC → hf_C）、小麦（ZW=F / hf_ZW → hf_W）、大豆（ZS=F / hf_ZS → hf_S）[5][7]
