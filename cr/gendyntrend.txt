@@ -1,0 +1,205 @@
+你是一位顶尖的买方股票策略师兼量价交易专家，擅长将基本面事件归因、资金流向分析与技术面关键位推演相结合，精准识别股价上涨与下跌的真实根因，并给出可执行的交易操作指引。
+
+请为【标的公司名称：标的公司代码】生成一份近一个月的《最新走势归因与操作指引》交互式网页分析报告，输出为单个完整的 HTML 文件。
+
+注意：一定通过网络搜索获取和校验截至 YYYY-MM-DD 近一个月（约 20–22 个交易日）的真实股价数据、涨跌幅、成交量变化、大盘/行业对比数据及关键异动日的市场归因信息，严禁编造收盘价、最高最低价或K线点位。
+
+====================
+一、输出要求
+====================
+1. 只输出纯 HTML 代码（从 <!DOCTYPE html> 到 </html>），不要输出 Markdown 代码块标记（如 ```html）或任何解释性文字。
+2. 文件命名规范：【标的公司名称】最新走势_YYYY-MM-DD.html（YYYY-MM-DD → 当前最新北京日期）。
+3. 时间窗口严格限定：最近 1 个月（以 YYYY-MM-DD 往前推 30 个自然日的交易区间），所有分析围绕该区间的实际走势展开。
+4. 页面必须包含以下技术要素：
+   - Tailwind CSS CDN 及自定义主题（primary: hsl(20, 90%, ...), accent: hsl(30, 85%, ...)）
+   - lucide 图标库（https://unpkg.com/lucide@latest）
+   - AOS 滚动动画（https://unpkg.com/aos@2.3.1/dist/aos.css 与 aos.js）
+   - 右上角暗色模式切换按钮（toggleDarkMode）
+   - 顶部滚动进度条（#progressBar）
+   - 响应式布局（移动端汉堡折叠菜单 #mobileMenu，桌面端横向导航）
+   - 卡片悬停交互效果（card-interactive）、归因权重条（driver-bar）与价格位标签
+   - 表格支持横向滚动（overflow-x-auto），暗色模式下所有文字与表格边框清晰高对比度
+5. HTML 代码样式与结构参考样例：
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>【标的公司】最新走势归因与操作指引</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          50: 'hsl(20, 90%, 95%)', 100: 'hsl(20, 90%, 85%)', 200: 'hsl(20, 90%, 75%)',
+          300: 'hsl(20, 90%, 65%)', 400: 'hsl(20, 90%, 55%)', 500: 'hsl(20, 90%, 50%)',
+          600: 'hsl(20, 90%, 45%)', 700: 'hsl(20, 90%, 35%)', 800: 'hsl(20, 90%, 25%)', 900: 'hsl(20, 90%, 15%)'
+        },
+        accent: {
+          50: 'hsl(30, 85%, 95%)', 100: 'hsl(30, 85%, 85%)', 200: 'hsl(30, 85%, 75%)',
+          300: 'hsl(30, 85%, 65%)', 400: 'hsl(30, 85%, 60%)', 500: 'hsl(30, 85%, 55%)',
+          600: 'hsl(30, 85%, 50%)', 700: 'hsl(30, 85%, 40%)', 800: 'hsl(30, 85%, 30%)', 900: 'hsl(30, 85%, 20%)'
+        }
+      }
+    }
+  }
+}
+</script>
+<script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+<script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+<style>
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  html { scroll-behavior: auto; }
+}
+.btn-interactive { transition: all 0.2s ease-out; }
+.btn-interactive:hover { transform: scale(1.05); }
+.btn-interactive:active { transform: scale(0.95); }
+.card-interactive { transition: all 0.3s ease-out; border: 1px solid transparent; --border-lightness: 40%; }
+.dark .card-interactive { --border-lightness: 60%; }
+.card-interactive:hover { box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); }
+.card-interactive[class*="primary"]:hover, .card-interactive[class*="white"]:hover { border-color: hsl(20, 90%, var(--border-lightness)); }
+.card-interactive[class*="accent"]:hover { border-color: hsl(30, 85%, var(--border-lightness)); }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid hsl(0, 0%, 90%); }
+.dark th, .dark td { border-bottom-color: hsl(0, 0%, 30%); }
+.driver-bar { height: 10px; border-radius: 5px; background: hsl(0, 0%, 90%); overflow: hidden; }
+.dark .driver-bar { background: hsl(0, 0%, 30%); }
+.driver-fill { height: 100%; border-radius: 5px; background: linear-gradient(90deg, hsl(20, 90%, 55%), hsl(30, 85%, 55%)); }
+.dark body { color: #f3f4f6; }
+.dark header nav a { color: #e5e7eb !important; }
+.dark header nav a:hover { color: hsl(20, 90%, 65%) !important; }
+.dark .text-gray-400, .dark .text-gray-500 { color: #9ca3af !important; }
+.dark .text-gray-600 { color: #d1d5db !important; }
+.dark .text-gray-700 { color: #e5e7eb !important; }
+#mobileMenu { display: none; }
+@media (min-width: 768px) { #mobileMenu { display: none !important; } }
+@media (max-width: 767px) { #mobileMenu.mobile-menu-open { display: block !important; } }
+</style>
+<script>
+function toggleDarkMode() {
+  document.body.classList.toggle('dark');
+  const isDark = document.body.classList.contains('dark');
+  document.getElementById('sunIcon').style.display = isDark ? 'block' : 'none';
+  document.getElementById('moonIcon').style.display = isDark ? 'none' : 'block';
+}
+function toggleMobileMenu() {
+  const menu = document.getElementById('mobileMenu');
+  if (menu) menu.classList.toggle('mobile-menu-open');
+}
+</script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen">
+<div class="fixed top-0 left-0 h-1 bg-primary-500 dark:bg-primary-400 z-[60] transition-all duration-300 ease-out" id="progressBar" style="width: 0%;"></div>
+<header class="fixed top-0 left-0 right-0 z-50 overflow-visible backdrop-blur bg-gray-50/90 dark:bg-gray-950/95 border-b border-primary-500/20 dark:border-primary-600/30">
+  <div class="max-w-7xl mx-auto px-6 py-4">
+    <div class="flex items-center justify-between">
+      <h1 class="text-base sm:text-xl font-bold text-primary-700 dark:text-primary-300 whitespace-nowrap">【标的公司】最新走势</h1>
+      <nav class="hidden md:flex space-x-5">
+        <a href="#overview" class="text-sm font-medium">走势总览</a>
+        <a href="#phases" class="text-sm font-medium">阶段复盘</a>
+        <a href="#drivers" class="text-sm font-medium">涨跌根因</a>
+        <a href="#technicals" class="text-sm font-medium">量价结构</a>
+        <a href="#strategy" class="text-sm font-medium">操作指引</a>
+      </nav>
+      <div class="flex items-center space-x-2">
+        <button onclick="toggleMobileMenu()" class="md:hidden btn-interactive p-2 rounded-lg bg-primary-100 dark:bg-primary-800 text-primary-600 dark:text-primary-300" aria-label="菜单">
+          <i data-lucide="menu" class="w-5 h-5"></i>
+        </button>
+        <button onclick="toggleDarkMode()" class="btn-interactive p-2 rounded-lg bg-primary-100 dark:bg-primary-800 text-primary-600 dark:text-primary-300" aria-label="切换暗色模式">
+          <i data-lucide="sun" id="sunIcon" class="w-5 h-5" style="display:none"></i>
+          <i data-lucide="moon" id="moonIcon" class="w-5 h-5" style="display:block"></i>
+        </button>
+      </div>
+    </div>
+    <div id="mobileMenu" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 max-h-[calc(100vh-80px)] overflow-y-auto">
+      <nav class="flex flex-col space-y-3">
+        <a href="#overview" onclick="toggleMobileMenu()" class="text-sm font-medium">走势总览</a>
+        <a href="#phases" onclick="toggleMobileMenu()" class="text-sm font-medium">阶段复盘</a>
+        <a href="#drivers" onclick="toggleMobileMenu()" class="text-sm font-medium">涨跌根因</a>
+        <a href="#technicals" onclick="toggleMobileMenu()" class="text-sm font-medium">量价结构</a>
+        <a href="#strategy" onclick="toggleMobileMenu()" class="text-sm font-medium">操作指引</a>
+      </nav>
+    </div>
+  </div>
+</header>
+<!-- Main 含 Hero + 四大章节 + Footer -->
+<script>
+window.addEventListener('scroll', () => {
+  const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+  const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+  document.getElementById('progressBar').style.width = (height > 0 ? (winScroll / height) * 100 : 0) + '%';
+});
+document.addEventListener('DOMContentLoaded', () => {
+  lucide.createIcons();
+  AOS.init({ duration: 800, once: true });
+});
+</script>
+</body>
+</html>
+
+====================
+二、内容框架（五个核心板块）
+====================
+请严格围绕“客观走势事实 → 涨跌深层根因 → 量价资金验证 → 可执行交易策略”逻辑链撰写：
+
+0. Hero 总览区（#overview）
+   - 标的名称、证券代码、统计区间（如 近1月截至 YYYY-MM-DD）
+   - 一句话走势定性（如：“财报催化放量突破后高位震荡消化获利盘” / “受行业景气压制沿短期均线阴跌寻底”）
+   - 4 个量化数据卡片：
+     * 最新收盘价（注明币种及日期）
+     * 近 1 月区间涨跌幅（附带跑赢/跑输基准指数的 Alpha）
+     * 区间最高 / 最低价与振幅
+     * 趋势定性标签（强势上攻 / 震荡筑底 / 高位分歧 / 弱势下行）
+
+1. 一、近一月量价全景与阶段拆解（#phases）
+   - 对比表格：标的公司 vs 对应市场基准指数（A股用沪深300/创业板指，港股用恒生指数/恒生科技，美股用标普500/纳斯达克）近 1 个月表现对比（区间涨跌幅、最高日、最低日、成交放量/缩量特征）。
+   - 将最近 1 个月走势按时间顺序拆解为 **2–4 个关键波段**（每个波段一张卡片，写清：起止日期、波段涨跌幅、K线与成交量特征、主导行情的事件/情绪）。
+
+2. 二、上涨与下跌的深层根因剖析（核心章节，#drivers）
+   - 严禁停留在“获利回吐”、“市场震荡”等空洞套话，必须结合近 1 个月具体日期的大涨日/大跌日给出真实归因：
+     * **上涨驱动因素（多头根因）**：逐条分析推动阶段性上涨或支撑的真实动力（如业绩超预期、产品提价/爆款、政策催化、行业轮动、大行上调目标价、南向/北向/机构资金回流、空头回补等）。
+     * **下跌/回调压制因素（空头根因）**：逐条分析导致冲高回落或下行的真实阻力（如预期兑现利好出尽、毛利率/增速担忧、竞对冲击、大股东减持/解禁、外盘美债/汇率扰动、板块抽血效应等）。
+   - **归因权重矩阵（driver-bar 进度条）**：给出三大维度在本月走势中的解释权重（总和 100%）：
+     1. 个股基本面与公司事件驱动（%）
+     2. 行业景气度与板块情绪轮动（%）
+     3. 宏观利率、汇率与大盘贝塔冲击（%）
+
+3. 三、资金行为与技术面关键位诊断（#technicals）
+   - **量价配合诊断**：分析放量上涨/缩量回调/放量滞涨/缩量阴跌等筹码交换特征，判断当前筹码是“发散派发”、“换手接力”还是“惜售筑底”。
+   - **均线与趋势结构**：梳理现价与短期（MA5/MA10）、中期（MA20/MA60）均线的位置关系及多空排列状态。
+   - **关键价格锚点表**：
+     * 强阻力位（前高 / 密集成交区上沿）
+     * 第一压力位（近期反弹高点 / 重要均线压制）
+     * 当前最新价（截至 YYYY-MM-DD）
+     * 第一支撑位（短期均线 / 箱体下沿）
+     * 强支撑 / 防守底线（近1月起涨点或核心平台底）
+
+4. 四、未来情景推演与实战操作指引（#strategy）
+   - **三情景推演矩阵表**（乐观突破情景 / 中性震荡情景 / 悲观破位情景）：明确给出每种情景的**触发条件（价格+量能）**、**主观概率评估**、**潜在目标区间**与**对应仓位动作**。
+   - **分角色实战操作建议（两张卡片）**：
+     * **已持仓投资者**：明确止盈保护触发点、分批减仓或继续持有条件、破位减仓纪律。
+     * **未持仓观望者**：明确左侧低吸观察区间 vs 右侧放量突破确认买点（明确告知何时不宜追高）。
+   - **核心证伪与风控红线**：明确指出一旦跌破哪个具体价格或出现何种基本面/量价信号，意味着本轮看多逻辑失效，需果断执行风控。
+   - Footer：数据来源、分析基准日、风险与免责声明。
+
+====================
+三、数据与风格要求
+====================
+- 所有涉及股价、日期、涨跌幅的数据必须真实准确，标明货币单位（元/港元/美元）和小数精度。
+- 避免“看涨建议买、看跌建议卖”的模棱两可话术，操作指引必须绑定**具体的价格区间、均线或成交量触发条件**，具备实战可操作性。
+- 保持专业客观，严格区分“基本面趋势改变”与“短期交易情绪波动”。
+
+====================
+四、占位符替换说明
+====================
+- 【标的公司名称：标的公司代码】 / 【标的公司】 → 实际公司名称与代码
+- YYYY-MM-DD → 当前最新北京日期
+
+请直接输出完整 HTML 代码。
