@@ -25,7 +25,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>【标的公司】最新动态全景追踪</title>
+<title>中芯国际（688981）最新动态全景追踪 · 截至 2026-11-22</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config = {
@@ -36,12 +36,12 @@ tailwind.config = {
         primary: {
           50: 'hsl(20, 90%, 95%)', 100: 'hsl(20, 90%, 85%)', 200: 'hsl(20, 90%, 75%)',
           300: 'hsl(20, 90%, 65%)', 400: 'hsl(20, 90%, 55%)', 500: 'hsl(20, 90%, 50%)',
-          600: 'hsl(20, 90%, 45%)', 700: 'hsl(20, 90%, 35%)', 800: 'hsl(20, 90%, 25%)', 900: 'hsl(20, 90%, 15%)'
+          600: 'hsl(20, 90%, 45%)', 700: 'hsl(20, 90%, 35%)', 800: 'hsl(20, 90%, 25%)', 900: 'hsl(20, 90%, 15%)', 950: 'hsl(20, 90%, 10%)'
         },
         accent: {
           50: 'hsl(30, 85%, 95%)', 100: 'hsl(30, 85%, 85%)', 200: 'hsl(30, 85%, 75%)',
           300: 'hsl(30, 85%, 65%)', 400: 'hsl(30, 85%, 60%)', 500: 'hsl(30, 85%, 55%)',
-          600: 'hsl(30, 85%, 50%)', 700: 'hsl(30, 85%, 40%)', 800: 'hsl(30, 85%, 30%)', 900: 'hsl(30, 85%, 20%)'
+          600: 'hsl(30, 85%, 50%)', 700: 'hsl(30, 85%, 40%)', 800: 'hsl(30, 85%, 30%)', 900: 'hsl(30, 85%, 20%)', 950: 'hsl(30, 85%, 10%)'
         }
       }
     }
@@ -54,6 +54,7 @@ tailwind.config = {
 <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
 <style>
 html { scroll-behavior: smooth; }
+section[id], article[id], div[id^="card-"] { scroll-margin-top: 84px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
   html { scroll-behavior: auto; }
@@ -61,75 +62,653 @@ html { scroll-behavior: smooth; }
 .btn-interactive { transition: all 0.2s ease-out; }
 .btn-interactive:hover { transform: scale(1.05); }
 .btn-interactive:active { transform: scale(0.95); }
-.card-interactive { transition: all 0.3s ease-out; border: 1px solid transparent; --border-lightness: 40%; }
-.dark .card-interactive { --border-lightness: 60%; }
-.card-interactive:hover { box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); }
-.card-interactive[class*="primary"]:hover, .card-interactive[class*="white"]:hover { border-color: hsl(20, 90%, var(--border-lightness)); }
-.card-interactive[class*="accent"]:hover { border-color: hsl(30, 85%, var(--border-lightness)); }
+.card-interactive { transition: all 0.28s ease-out; }
+.card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 28px -8px rgba(0, 0, 0, 0.14);
+}
+.dark .card-interactive:hover {
+  box-shadow: 0 18px 28px -8px rgba(0, 0, 0, 0.48);
+}
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid hsl(0, 0%, 90%); }
-.dark th, .dark td { border-bottom-color: hsl(0, 0%, 30%); }
-.impact-bar { height: 8px; border-radius: 4px; background: hsl(0, 0%, 90%); overflow: hidden; }
-.dark .impact-bar { background: hsl(0, 0%, 30%); }
-.impact-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, hsl(20, 90%, 55%), hsl(30, 85%, 55%)); }
-.dark body { color: #f3f4f6; }
-.dark header nav a { color: #e5e7eb !important; }
-.dark header nav a:hover { color: hsl(20, 90%, 65%) !important; }
-.dark .text-gray-400, .dark .text-gray-500 { color: #9ca3af !important; }
-.dark .text-gray-600 { color: #d1d5db !important; }
-.dark .text-gray-700 { color: #e5e7eb !important; }
+th, td { text-align: left; padding: 0.75rem 0.85rem; border-bottom: 1px solid hsl(0, 0%, 90%); }
+.dark th, .dark td { border-bottom-color: rgba(255, 255, 255, 0.08); }
+.impact-bar { height: 8px; border-radius: 999px; background: hsl(0, 0%, 90%); overflow: hidden; }
+.dark .impact-bar { background: rgba(255, 255, 255, 0.12); }
+.impact-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, hsl(20, 90%, 55%), hsl(30, 85%, 55%));
+  transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
 #mobileMenu { display: none; }
 @media (min-width: 768px) { #mobileMenu { display: none !important; } }
 @media (max-width: 767px) { #mobileMenu.mobile-menu-open { display: block !important; } }
 </style>
 <script>
-function toggleDarkMode() {
-  document.body.classList.toggle('dark');
-  const isDark = document.body.classList.contains('dark');
-  document.getElementById('sunIcon').style.display = isDark ? 'block' : 'none';
-  document.getElementById('moonIcon').style.display = isDark ? 'none' : 'block';
+// ⭐ 若被嵌入暗黑看盘弹窗 iframe 中，自动默认开启暗黑模式
+(function initTheme() {
+  const inIframe = window.self !== window.top;
+  if (inIframe || window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    document.documentElement.classList.add('dark');
+  }
+})();
+
+function syncThemeIcons() {
+  const isDark = document.documentElement.classList.contains('dark');
+  const sun = document.getElementById('sunIcon');
+  const moon = document.getElementById('moonIcon');
+  if (sun) sun.style.display = isDark ? 'block' : 'none';
+  if (moon) moon.style.display = isDark ? 'none' : 'block';
 }
+
+function toggleDarkMode() {
+  document.documentElement.classList.toggle('dark');
+  syncThemeIcons();
+}
+
 function toggleMobileMenu() {
   const menu = document.getElementById('mobileMenu');
   if (menu) menu.classList.toggle('mobile-menu-open');
 }
 </script>
 </head>
-<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen">
+<body class="bg-gray-50 dark:bg-[#0f1419] text-gray-900 dark:text-gray-100 min-h-screen transition-colors duration-200">
 <div class="fixed top-0 left-0 h-1 bg-primary-500 dark:bg-primary-400 z-[60] transition-all duration-300 ease-out" id="progressBar" style="width: 0%;"></div>
-<header class="fixed top-0 left-0 right-0 z-50 overflow-visible backdrop-blur bg-gray-50/90 dark:bg-gray-950/95 border-b border-primary-500/20 dark:border-primary-600/30">
-  <div class="max-w-7xl mx-auto px-6 py-4">
+
+<!-- Header -->
+<header class="fixed top-0 left-0 right-0 z-50 overflow-visible backdrop-blur-md bg-white/90 dark:bg-[#111827]/90 border-b border-primary-500/20 dark:border-gray-800">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5">
     <div class="flex items-center justify-between">
-      <h1 class="text-base sm:text-xl font-bold text-primary-700 dark:text-primary-300 whitespace-nowrap">【标的公司】最新动态</h1>
-      <nav class="hidden md:flex space-x-5">
-        <a href="#overview" class="text-sm font-medium">总览</a>
-        <a href="#company" class="text-sm font-medium">公司Top3</a>
-        <a href="#industry" class="text-sm font-medium">行业Top3</a>
-        <a href="#macro" class="text-sm font-medium">宏观政策Top3</a>
-        <a href="#matrix" class="text-sm font-medium">催化矩阵</a>
+      <div class="flex items-center gap-2.5 min-w-0">
+        <span class="w-2.5 h-2.5 rounded-full bg-primary-500 shrink-0"></span>
+        <h1 class="text-sm sm:text-lg font-bold text-primary-700 dark:text-primary-300 truncate">中芯国际 · 最新动态</h1>
+      </div>
+      <nav class="hidden md:flex items-center space-x-6">
+        <a href="#overview" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">总览</a>
+        <a href="#company" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">公司Top3</a>
+        <a href="#industry" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">行业Top3</a>
+        <a href="#macro" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">宏观政策Top3</a>
+        <a href="#matrix" class="text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">催化矩阵</a>
       </nav>
       <div class="flex items-center space-x-2">
-        <button onclick="toggleMobileMenu()" class="md:hidden btn-interactive p-2 rounded-lg bg-primary-100 dark:bg-primary-800 text-primary-600 dark:text-primary-300" aria-label="菜单">
-          <i data-lucide="menu" class="w-5 h-5"></i>
+        <button onclick="toggleMobileMenu()" class="md:hidden btn-interactive p-2 rounded-lg bg-primary-100 dark:bg-gray-800 text-primary-600 dark:text-primary-300 border border-transparent dark:border-gray-700" aria-label="菜单">
+          <i data-lucide="menu" class="w-4 h-4"></i>
         </button>
-        <button onclick="toggleDarkMode()" class="btn-interactive p-2 rounded-lg bg-primary-100 dark:bg-primary-800 text-primary-600 dark:text-primary-300" aria-label="切换暗色模式">
-          <i data-lucide="sun" id="sunIcon" class="w-5 h-5" style="display:none"></i>
-          <i data-lucide="moon" id="moonIcon" class="w-5 h-5" style="display:block"></i>
+        <button onclick="toggleDarkMode()" class="btn-interactive p-2 rounded-lg bg-primary-100 dark:bg-gray-800 text-primary-600 dark:text-primary-300 border border-transparent dark:border-gray-700" aria-label="切换暗色模式">
+          <i data-lucide="sun" id="sunIcon" class="w-4 h-4" style="display:none"></i>
+          <i data-lucide="moon" id="moonIcon" class="w-4 h-4" style="display:block"></i>
         </button>
       </div>
     </div>
-    <div id="mobileMenu" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 max-h-[calc(100vh-80px)] overflow-y-auto">
-      <nav class="flex flex-col space-y-3">
-        <a href="#overview" onclick="toggleMobileMenu()" class="text-sm font-medium">总览</a>
-        <a href="#company" onclick="toggleMobileMenu()" class="text-sm font-medium">公司Top3</a>
-        <a href="#industry" onclick="toggleMobileMenu()" class="text-sm font-medium">行业Top3</a>
-        <a href="#macro" onclick="toggleMobileMenu()" class="text-sm font-medium">宏观政策Top3</a>
-        <a href="#matrix" onclick="toggleMobileMenu()" class="text-sm font-medium">催化矩阵</a>
+    <div id="mobileMenu" class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-800 max-h-[calc(100vh-80px)] overflow-y-auto">
+      <nav class="flex flex-col space-y-2.5">
+        <a href="#overview" onclick="toggleMobileMenu()" class="text-sm font-medium text-gray-700 dark:text-gray-200 py-1">总览</a>
+        <a href="#company" onclick="toggleMobileMenu()" class="text-sm font-medium text-gray-700 dark:text-gray-200 py-1">公司Top3</a>
+        <a href="#industry" onclick="toggleMobileMenu()" class="text-sm font-medium text-gray-700 dark:text-gray-200 py-1">行业Top3</a>
+        <a href="#macro" onclick="toggleMobileMenu()" class="text-sm font-medium text-gray-700 dark:text-gray-200 py-1">宏观政策Top3</a>
+        <a href="#matrix" onclick="toggleMobileMenu()" class="text-sm font-medium text-gray-700 dark:text-gray-200 py-1">催化矩阵</a>
       </nav>
     </div>
   </div>
 </header>
-<!-- Main 含 Hero + 四大章节 + Footer -->
+
+<main class="pt-20 sm:pt-24 pb-16">
+
+<!-- ========== HERO / OVERVIEW ========== -->
+<section id="overview" class="max-w-7xl mx-auto px-4 sm:px-6 mb-14" data-aos="fade-up">
+  <div class="bg-white dark:bg-[#161f2c] rounded-2xl p-6 sm:p-10 shadow-sm border border-primary-100 dark:border-gray-800">
+    <div class="flex flex-wrap items-center gap-2.5 mb-4">
+      <span class="px-3 py-1 rounded-full bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300 text-xs font-semibold font-mono">688981.SH / 00981.HK</span>
+      <span class="px-3 py-1 rounded-full bg-accent-100 dark:bg-accent-900/40 text-accent-700 dark:text-accent-300 text-xs font-semibold">半导体 · 晶圆代工</span>
+      <span class="px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-xs font-semibold flex items-center gap-1 border border-transparent dark:border-gray-700">
+        <i data-lucide="calendar" class="w-3 h-3"></i> 近30日 · 截至 2026-11-22
+      </span>
+    </div>
+
+    <h2 class="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-3">中芯国际集成电路制造有限公司</h2>
+    <p class="text-gray-600 dark:text-gray-300 text-sm sm:text-base leading-relaxed mb-6 max-w-4xl">
+      近30日消息面呈<strong class="text-primary-600 dark:text-primary-400">“业绩超预期、估值受地缘压制”</strong>的显著背离格局。Q3营收与毛利率双双突破指引上限，AI配套芯片需求驱动产能利用率逼近物理极限；但美国BIS于11月16日扩大先进芯片出口管制，设备交期拉长至16—24个月，成为压制估值弹性的核心变量。强劲基本面与外部约束的角力，决定短期股价方向。
+    </p>
+
+    <!-- ⭐ 新增：Q3 核心业绩 KPI 速览条 -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div class="rounded-xl p-3.5 bg-primary-50/70 dark:bg-gray-800/80 border border-primary-100 dark:border-gray-700/80">
+        <div class="text-[11px] text-gray-500 dark:text-gray-400 mb-1">2026 Q3 营收</div>
+        <div class="text-lg sm:text-xl font-bold font-mono text-gray-900 dark:text-white">219.83亿 <span class="text-xs font-semibold text-emerald-600 dark:text-emerald-400">+28.1%</span></div>
+      </div>
+      <div class="rounded-xl p-3.5 bg-primary-50/70 dark:bg-gray-800/80 border border-primary-100 dark:border-gray-700/80">
+        <div class="text-[11px] text-gray-500 dark:text-gray-400 mb-1">Q3 毛利率（大超上限）</div>
+        <div class="text-lg sm:text-xl font-bold font-mono text-primary-600 dark:text-primary-400">29.9% <span class="text-xs font-semibold text-emerald-600 dark:text-emerald-400">环比+4.6pct</span></div>
+      </div>
+      <div class="rounded-xl p-3.5 bg-primary-50/70 dark:bg-gray-800/80 border border-primary-100 dark:border-gray-700/80">
+        <div class="text-[11px] text-gray-500 dark:text-gray-400 mb-1">产能利用率</div>
+        <div class="text-lg sm:text-xl font-bold font-mono text-amber-600 dark:text-amber-400">97.3% <span class="text-xs font-normal text-gray-500 dark:text-gray-400">逼近满产</span></div>
+      </div>
+      <div class="rounded-xl p-3.5 bg-primary-50/70 dark:bg-gray-800/80 border border-primary-100 dark:border-gray-700/80">
+        <div class="text-[11px] text-gray-500 dark:text-gray-400 mb-1">2026全年营收指引</div>
+        <div class="text-lg sm:text-xl font-bold font-mono text-cyan-600 dark:text-cyan-400">120亿美元+ <span class="text-xs font-semibold text-emerald-600 dark:text-emerald-400">~+30%</span></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="bg-gray-50 dark:bg-gray-800/70 rounded-xl p-5 border border-gray-200 dark:border-gray-700 card-interactive">
+        <div class="flex items-center gap-2 mb-2.5">
+          <i data-lucide="gauge" class="w-4 h-4 text-primary-500"></i>
+          <span class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">消息面总体基调</span>
+        </div>
+        <p class="text-xl font-bold text-primary-600 dark:text-primary-300">中性偏多</p>
+        <p class="text-xs text-gray-600 dark:text-gray-400 mt-1.5 leading-relaxed">业绩与AI需求提供强支撑，但出口管制升级与资本开支扰动约束上行空间</p>
+      </div>
+      <div class="bg-emerald-50/70 dark:bg-emerald-950/30 rounded-xl p-5 border border-emerald-200 dark:border-emerald-800/60 card-interactive">
+        <div class="flex items-center gap-2 mb-2.5">
+          <i data-lucide="zap" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
+          <span class="text-xs font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">本月最强单一催化剂</span>
+        </div>
+        <p class="text-sm font-bold text-emerald-800 dark:text-emerald-200 leading-snug">Q3毛利率29.9%大超指引上限，AI配套芯片（BCD/专用存储/控制器）需求爆发，全年营收指引破120亿美元</p>
+        <p class="text-xs text-emerald-700/70 dark:text-emerald-400/80 mt-2">2026-11-12 三季度财报 / 2026-11-13 业绩说明会</p>
+      </div>
+      <div class="bg-rose-50/70 dark:bg-rose-950/30 rounded-xl p-5 border border-rose-200 dark:border-rose-800/60 card-interactive">
+        <div class="flex items-center gap-2 mb-2.5">
+          <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-500"></i>
+          <span class="text-xs font-semibold text-rose-700 dark:text-rose-300 uppercase tracking-wide">本月最需警惕信号</span>
+        </div>
+        <p class="text-sm font-bold text-rose-800 dark:text-rose-200 leading-snug">美国BIS 11月16日新规收紧先进芯片代工/封装审查，且设备交期拉长至16—24个月，资本开支或低于80亿美元</p>
+        <p class="text-xs text-rose-700/70 dark:text-rose-400/80 mt-2">2026-11-16 美国商务部 / 2026-11-13 业绩说明会</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== COMPANY TOP 3 ========== -->
+<section id="company" class="max-w-7xl mx-auto px-4 sm:px-6 mb-14" data-aos="fade-up">
+  <div class="flex items-center gap-3 mb-6">
+    <div class="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center">
+      <i data-lucide="building-2" class="w-5 h-5 text-primary-600 dark:text-primary-300"></i>
+    </div>
+    <h2 class="text-xl sm:text-2xl font-bold">一、公司最近一个月 Top 3 核心动态</h2>
+  </div>
+
+  <!-- TOP 1 -->
+  <article id="card-company-1" class="bg-white dark:bg-[#161f2c] rounded-2xl p-6 sm:p-8 mb-5 shadow-sm border border-gray-200 dark:border-gray-800 border-l-4 border-l-emerald-500 card-interactive" data-aos="fade-up">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div class="flex flex-wrap items-center gap-2.5">
+        <span class="px-3 py-1 rounded-lg bg-primary-500 text-white text-xs font-bold">TOP 1</span>
+        <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 font-mono"><i data-lucide="calendar" class="w-3 h-3"></i> 2026-11-12</span>
+        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold">重大利好</span>
+      </div>
+      <span class="text-xs font-mono font-bold text-primary-600 dark:text-primary-400">影响力 9.5 / 10</span>
+    </div>
+    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Q3营收/毛利率双双突破指引上限，扣非净利润同比+107.3%</h3>
+
+    <!-- 结构化数字胶囊 -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4 text-xs">
+      <div class="bg-gray-50 dark:bg-gray-800/80 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700/70">
+        <span class="text-gray-500 dark:text-gray-400 block">扣非净利润</span>
+        <span class="font-bold font-mono text-sm text-emerald-600 dark:text-emerald-400">26.39亿 (+107.3%)</span>
+      </div>
+      <div class="bg-gray-50 dark:bg-gray-800/80 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700/70">
+        <span class="text-gray-500 dark:text-gray-400 block">月产能 / 销售晶圆</span>
+        <span class="font-bold font-mono text-sm text-gray-900 dark:text-white">111.68万 / 303.4万片</span>
+      </div>
+      <div class="bg-gray-50 dark:bg-gray-800/80 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700/70">
+        <span class="text-gray-500 dark:text-gray-400 block">工业与汽车占比</span>
+        <span class="font-bold font-mono text-sm text-primary-600 dark:text-primary-400">19.3% (去年11.9%)</span>
+      </div>
+      <div class="bg-gray-50 dark:bg-gray-800/80 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700/70">
+        <span class="text-gray-500 dark:text-gray-400 block">智能手机占比</span>
+        <span class="font-bold font-mono text-sm text-gray-700 dark:text-gray-300">14.3% (去年21.5%)</span>
+      </div>
+    </div>
+
+    <p class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
+      2026年Q3实现营收<strong>219.83亿元</strong>（31.90亿美元），同比+28.1%/+33.9%；归母净利润28.47亿元。毛利率达<strong>29.9%</strong>（环比+4.6pct），大幅跑赢26%—28%指引上限；产能利用率升至<strong>97.3%</strong>。AI配套芯片（BCD、专用存储、控制器）需求超预期爆发是核心边际增量，产品结构加速脱离低迷消费电子，向高附加值工业汽车切换。
+    </p>
+
+    <div class="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 mb-4 border border-gray-100 dark:border-gray-700/60">
+      <div class="flex items-start gap-2.5">
+        <i data-lucide="trending-up" class="w-4 h-4 text-primary-500 mt-0.5 shrink-0"></i>
+        <p class="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+          <strong>影响深度：</strong>97.3%满产状态充分摊薄折旧固定成本，释放极强利润弹性；但同时意味着<strong>现有供给弹性已近耗尽</strong>，后续增量高度依赖新产能交付。公司对Q4毛利率指引回落至26%—28%，也印证了满产之后边际改善空间趋缓。
+        </p>
+      </div>
+    </div>
+    <div class="impact-bar"><div class="impact-fill" style="width: 95%;"></div></div>
+  </article>
+
+  <!-- TOP 2 -->
+  <article id="card-company-2" class="bg-white dark:bg-[#161f2c] rounded-2xl p-6 sm:p-8 mb-5 shadow-sm border border-gray-200 dark:border-gray-800 border-l-4 border-l-amber-500 card-interactive" data-aos="fade-up" data-aos-delay="80">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div class="flex flex-wrap items-center gap-2.5">
+        <span class="px-3 py-1 rounded-lg bg-primary-500 text-white text-xs font-bold">TOP 2</span>
+        <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 font-mono"><i data-lucide="calendar" class="w-3 h-3"></i> 2026-11-13</span>
+        <span class="px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-xs font-bold">中性偏多（结构分化）</span>
+      </div>
+      <span class="text-xs font-mono font-bold text-primary-600 dark:text-primary-400">影响力 8.5 / 10</span>
+    </div>
+    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-3">全年营收指引超120亿美元，但设备交期拉长至16—24个月扰动资本开支</h3>
+    <p class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
+      11月13日业绩说明会上，联席CEO赵海军预计<strong>2026全年收入突破120亿美元（同比增近三成）</strong>；即便全年折旧同比增约30%，全年毛利率仍可守住<strong>26%左右</strong>（同比+5pct）。但同时警示：全球设备供应链紧张，新订单交期普遍拉长至16—24个月，<strong>部分设备甚至超过24个月</strong>。Q3资本开支74.23亿元，已连续三个季度环比下滑。
+    </p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+      <div class="bg-emerald-50/60 dark:bg-emerald-950/25 rounded-xl p-3.5 border border-emerald-200/70 dark:border-emerald-800/40">
+        <div class="text-xs font-bold text-emerald-700 dark:text-emerald-300 mb-1 flex items-center gap-1"><i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> 正面传导（价格端 + 折旧缓释）</div>
+        <p class="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">设备受阻拉长了2027年成熟制程供不应求窗口期，支撑代工价格韧性；短期资本开支放缓亦减轻折旧前置与现金流出压力。</p>
+      </div>
+      <div class="bg-amber-50/60 dark:bg-amber-950/25 rounded-xl p-3.5 border border-amber-200/70 dark:border-amber-800/40">
+        <div class="text-xs font-bold text-amber-700 dark:text-amber-300 mb-1 flex items-center gap-1"><i data-lucide="minus-circle" class="w-3.5 h-3.5"></i> 潜在约束（量增天花板）</div>
+        <p class="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">对2027年及以后新产能增量形成硬约束，若设备持续延后，面对溢出订单的物理承接上限将被锁定，影响份额扩张斜率。</p>
+      </div>
+    </div>
+    <div class="impact-bar"><div class="impact-fill" style="width: 85%;"></div></div>
+  </article>
+
+  <!-- TOP 3 -->
+  <article id="card-company-3" class="bg-white dark:bg-[#161f2c] rounded-2xl p-6 sm:p-8 mb-5 shadow-sm border border-gray-200 dark:border-gray-800 border-l-4 border-l-sky-500 card-interactive" data-aos="fade-up" data-aos-delay="120">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div class="flex flex-wrap items-center gap-2.5">
+        <span class="px-3 py-1 rounded-lg bg-primary-500 text-white text-xs font-bold">TOP 3</span>
+        <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 font-mono"><i data-lucide="calendar" class="w-3 h-3"></i> 2026-11-16 ~ 11-19</span>
+        <span class="px-2.5 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 text-xs font-bold">中性（多空分歧剧烈）</span>
+      </div>
+      <span class="text-xs font-mono font-bold text-primary-600 dark:text-primary-400">影响力 7.0 / 10</span>
+    </div>
+    <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">业绩后大行评级剧烈分化：大和上调至“持有”，小摩下调目标价近三成</h3>
+
+    <!-- 机构观点对比小网格 -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 mb-4 text-xs">
+      <div class="rounded-lg p-3 bg-emerald-50/70 dark:bg-emerald-950/25 border border-emerald-200 dark:border-emerald-800/50">
+        <div class="font-bold text-emerald-700 dark:text-emerald-300">开源证券 · 买入</div>
+        <div class="text-gray-600 dark:text-gray-300 mt-1">上修2026-28年净利至15.5/20.5/26.0亿美元</div>
+      </div>
+      <div class="rounded-lg p-3 bg-sky-50/70 dark:bg-sky-950/25 border border-sky-200 dark:border-sky-800/50">
+        <div class="font-bold text-sky-700 dark:text-sky-300">中信里昂 · 跑赢大市</div>
+        <div class="text-gray-600 dark:text-gray-300 mt-1">H/A目标价调至87.5港元/180元，看好AI需求持续</div>
+      </div>
+      <div class="rounded-lg p-3 bg-amber-50/70 dark:bg-amber-950/25 border border-amber-200 dark:border-amber-800/50">
+        <div class="font-bold text-amber-700 dark:text-amber-300">大和 · 沽售→持有</div>
+        <div class="text-gray-600 dark:text-gray-300 mt-1">目标价40→47港元，认可汽车工业与风险回报改善</div>
+      </div>
+      <div class="rounded-lg p-3 bg-rose-50/70 dark:bg-rose-950/25 border border-rose-200 dark:border-rose-800/50">
+        <div class="font-bold text-rose-700 dark:text-rose-300">摩根大通 · 中性</div>
+        <div class="text-gray-600 dark:text-gray-300 mt-1">目标价78→55港元（-29.5%），担忧管制与折旧压制</div>
+      </div>
+    </div>
+
+    <div class="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 mb-4 border border-gray-100 dark:border-gray-700/60">
+      <div class="flex items-start gap-2.5">
+        <i data-lucide="scale" class="w-4 h-4 text-primary-500 mt-0.5 shrink-0"></i>
+        <p class="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+          <strong>影响深度：</strong>分歧本质在于对“设备约束”的不同定价——乐观派视其为供给稀缺与涨价的护城河，谨慎派视其为成长天花板叠加地缘折价。此外，11月12日三季报显示香港中央结算（陆股通）与南向资金持续增持，反映内资与外资在估值锚上的博弈，短期地缘消息比财务数据更易触发方向选择。
+        </p>
+      </div>
+    </div>
+    <div class="impact-bar"><div class="impact-fill" style="width: 70%;"></div></div>
+  </article>
+</section>
+
+<!-- ========== INDUSTRY TOP 3 ========== -->
+<section id="industry" class="max-w-7xl mx-auto px-4 sm:px-6 mb-14" data-aos="fade-up">
+  <div class="flex items-center gap-3 mb-2">
+    <div class="w-10 h-10 rounded-xl bg-accent-100 dark:bg-accent-900/40 flex items-center justify-center">
+      <i data-lucide="layers" class="w-5 h-5 text-accent-600 dark:text-accent-300"></i>
+    </div>
+    <h2 class="text-xl sm:text-2xl font-bold">二、所属行业最近一个月 Top 3 关键动态</h2>
+  </div>
+  <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mb-6 pl-13">细分赛道界定：<strong>成熟制程晶圆代工（8英寸/12英寸，28nm及以上）</strong>，兼顾先进制程溢出与AI配套芯片需求。</p>
+
+  <div class="space-y-5 mb-8">
+    <div id="card-industry-1" class="bg-white dark:bg-[#161f2c] rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-800 card-interactive">
+      <div class="flex flex-wrap items-center gap-2.5 mb-3">
+        <span class="px-2.5 py-0.5 rounded bg-accent-500 text-white text-xs font-bold">行业 TOP 1</span>
+        <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 font-mono"><i data-lucide="calendar" class="w-3 h-3"></i> 2026-10-19 / 11-02 / 11-16</span>
+        <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold">结构性利好</span>
+      </div>
+      <h3 class="font-bold text-gray-900 dark:text-white mb-2">成熟制程供需结构转折确认：三星加速退出8英寸，AI周边需求支撑价格上行</h3>
+      <p class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-3">
+        TrendForce（10-19 / 11-02）与台媒（11-16）连续确认：三星加速8英寸减产并规划2027年全面涨价，台积电将部分成熟产能转向CoWoS与硅光子；AI带动电源管理及周边芯片需求爆发，<strong>中芯、晶合与华虹</strong>受AI周边需求与产能排挤效应支撑，持续调涨价格并扩产，2027年成熟制程供需预期进一步趋紧。
+      </p>
+      <div class="bg-accent-50/70 dark:bg-accent-900/30 rounded-lg p-3.5 border border-accent-200/70 dark:border-accent-700/40">
+        <p class="text-xs text-accent-900 dark:text-gray-200 leading-relaxed"><strong class="text-accent-700 dark:text-accent-300">横向映射：</strong>属于行业贝塔直接受益。三星退出8英寸释放的转单需求难以被短期快速扩产填补，中芯是边际供给最确定的承接方之一，涨价直接增厚存量产能利润率，但受制于设备交期，利好主要兑现在“价”而非“量”。</p>
+      </div>
+    </div>
+
+    <div id="card-industry-2" class="bg-white dark:bg-[#161f2c] rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-800 card-interactive">
+      <div class="flex flex-wrap items-center gap-2.5 mb-3">
+        <span class="px-2.5 py-0.5 rounded bg-accent-500 text-white text-xs font-bold">行业 TOP 2</span>
+        <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 font-mono"><i data-lucide="calendar" class="w-3 h-3"></i> 2026-11-05</span>
+        <span class="px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-xs font-bold">中性偏多（分化）</span>
+      </div>
+      <h3 class="font-bold text-gray-900 dark:text-white mb-2">代工报价策略分化：三星/格芯/力积电直接降价，台积电/联电私下优惠，中芯维持涨价</h3>
+      <p class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-3">
+        11月5日《电子时报》报道，部分代工厂因消费电子砍单导致利用率下滑，价格策略分化：<strong>三星、力积电、格芯直接降价</strong>；台积电、联电、世界先进牌价不变但按订单规模私下折让。由于晶圆转单验证成本高，降价暂未对竞争格局产生立即冲击。
+      </p>
+      <div class="bg-accent-50/70 dark:bg-accent-900/30 rounded-lg p-3.5 border border-accent-200/70 dark:border-accent-700/40">
+        <p class="text-xs text-accent-900 dark:text-gray-200 leading-relaxed"><strong class="text-accent-700 dark:text-accent-300">横向映射：</strong>降价阵营集中在传统消费电子敞口高的厂商，而中芯增量来自AI配套及工业汽车（手机占比已降至14.3%），客群错位使中芯保持相对更强的价格韧性；但传统消费类产线仍面临间接松动压力。</p>
+      </div>
+    </div>
+
+    <div id="card-industry-3" class="bg-white dark:bg-[#161f2c] rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-800 card-interactive">
+      <div class="flex flex-wrap items-center gap-2.5 mb-3">
+        <span class="px-2.5 py-0.5 rounded bg-accent-500 text-white text-xs font-bold">行业 TOP 3</span>
+        <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 font-mono"><i data-lucide="calendar" class="w-3 h-3"></i> 2026-11-13</span>
+        <span class="px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-xs font-bold">中性（长期约束）</span>
+      </div>
+      <h3 class="font-bold text-gray-900 dark:text-white mb-2">半导体设备交期系统性拉长至16—24个月，成为全球代工扩产共同瓶颈</h3>
+      <p class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-3">
+        TrendForce 11月13日援引消息，全球新设备订单交期普遍拉长至16—24个月，三星、台积电、联电扩产节奏同样受制；中芯部分设备等待时间超24个月。
+      </p>
+      <div class="bg-accent-50/70 dark:bg-accent-900/30 rounded-lg p-3.5 border border-accent-200/70 dark:border-accent-700/40">
+        <p class="text-xs text-accent-900 dark:text-gray-200 leading-relaxed"><strong class="text-accent-700 dark:text-accent-300">横向映射：</strong>全行业产能供给无法快速释放，使中芯现有的<strong>111.68万片/月</strong>存量规模具备更高的稀缺租金价值；但叠加出口管制后，中芯先进制程设备的边际获取难度仍高于海外同业。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 行业对比表 -->
+  <div class="bg-white dark:bg-[#161f2c] rounded-2xl p-6 shadow-sm border border-gray-200 dark:border-gray-800">
+    <h3 class="font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2 text-sm sm:text-base"><i data-lucide="table-2" class="w-4 h-4 text-accent-500"></i> 行业动态对标影响对比表</h3>
+    <div class="overflow-x-auto">
+      <table class="text-xs sm:text-sm">
+        <thead>
+          <tr class="bg-gray-50 dark:bg-gray-800/80">
+            <th class="font-semibold text-gray-700 dark:text-gray-300">行业事件</th>
+            <th class="font-semibold text-gray-700 dark:text-gray-300">涉及主体</th>
+            <th class="font-semibold text-gray-700 dark:text-gray-300">对中芯国际利弊传导</th>
+            <th class="font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap">影响周期</th>
+          </tr>
+        </thead>
+        <tbody class="text-gray-600 dark:text-gray-300">
+          <tr>
+            <td class="font-medium text-gray-900 dark:text-gray-100">成熟制程供需转折，三星退出8英寸</td>
+            <td>三星、台积电、联电、华虹</td>
+            <td><span class="text-emerald-600 dark:text-emerald-400 font-semibold">利大于弊。</span>转单需求 + 涨价支撑存量利润率，受限于设备交期偏重价格受益。</td>
+            <td class="whitespace-nowrap font-mono">2026Q4—2027</td>
+          </tr>
+          <tr>
+            <td class="font-medium text-gray-900 dark:text-gray-100">代工报价分化，部分厂商降价</td>
+            <td>三星/格芯/力积电 vs. 中芯</td>
+            <td><span class="text-emerald-600 dark:text-emerald-400 font-semibold">偏利好。</span>AI配套及车规增量与降价区错位，价格韧性高于行业均值。</td>
+            <td class="whitespace-nowrap">短期—中期</td>
+          </tr>
+          <tr>
+            <td class="font-medium text-gray-900 dark:text-gray-100">设备交期拉长至16—24个月</td>
+            <td>全行业晶圆代工厂</td>
+            <td><span class="text-amber-600 dark:text-amber-400 font-semibold">中性偏多。</span>存量产能稀缺性抬升，但中芯先进制程设备获取难度更高。</td>
+            <td class="whitespace-nowrap font-mono">2027—2028</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ========== MACRO TOP 3 ========== -->
+<section id="macro" class="max-w-7xl mx-auto px-4 sm:px-6 mb-14" data-aos="fade-up">
+  <div class="flex items-center gap-3 mb-6">
+    <div class="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center">
+      <i data-lucide="globe" class="w-5 h-5 text-primary-600 dark:text-primary-300"></i>
+    </div>
+    <h2 class="text-xl sm:text-2xl font-bold">三、强相关国内与国际宏观政策/态势 Top 3</h2>
+  </div>
+
+  <div class="space-y-5">
+    <!-- MACRO 1 -->
+    <div id="card-macro-1" class="bg-white dark:bg-[#161f2c] rounded-2xl p-6 sm:p-8 shadow-sm border border-gray-200 dark:border-gray-800 border-l-4 border-l-rose-500 card-interactive">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <span class="px-3 py-1 rounded-lg bg-rose-500 text-white text-xs font-bold">国际 · 出口管制</span>
+          <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 font-mono"><i data-lucide="calendar" class="w-3 h-3"></i> 2026-11-16</span>
+          <span class="px-2.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 text-xs font-bold">利空（短期估值）/ 利好（国产替代）</span>
+        </div>
+        <span class="text-xs font-mono font-bold text-primary-600 dark:text-primary-400">影响力 9.0 / 10</span>
+      </div>
+      <h3 class="font-bold text-gray-900 dark:text-white mb-3">美国BIS发布先进芯片与远程算力新规，收紧代工/封测审查</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+        <div class="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 border border-gray-100 dark:border-gray-700/60">
+          <strong class="text-gray-900 dark:text-white block mb-1.5">1. 政策要点（美国商务部）</strong>
+          11月16日BIS新规将新加坡、马来西亚等5国纳入先进芯片许可范围，明确远程算力租赁门槛，收紧<strong>晶圆代工及封测厂对特定设计商的出货审查</strong>，并撤销《AI扩散规则》国家分档。
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 border border-gray-100 dark:border-gray-700/60">
+          <strong class="text-gray-900 dark:text-white block mb-1.5">2. 市场反向传导（分母 vs 情绪）</strong>
+          外资侧重合规与设备维保风险下调估值（小摩降至55港元）；但11月17日中芯H股逆势大涨超8%，南向资金3日净买入<strong>30.93亿港元</strong>——管制越严，国内唯一先进制程代工平台的战略稀缺性溢价越高。
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 border border-gray-100 dark:border-gray-700/60">
+          <strong class="text-gray-900 dark:text-white block mb-1.5">3. 业务敞口评估</strong>
+          直接冲击集中在<strong>14nm及以下先进制程</strong>的客户导入与维保合规；占营收主体的28nm及以上成熟制程基本盘不直接受限，仅存在零部件间接供应风险。
+        </div>
+      </div>
+    </div>
+
+    <!-- MACRO 2 -->
+    <div id="card-macro-2" class="bg-white dark:bg-[#161f2c] rounded-2xl p-6 sm:p-8 shadow-sm border border-gray-200 dark:border-gray-800 border-l-4 border-l-emerald-500 card-interactive">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <span class="px-3 py-1 rounded-lg bg-emerald-600 text-white text-xs font-bold">国内 · 产业政策</span>
+          <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 font-mono"><i data-lucide="calendar" class="w-3 h-3"></i> 2026-10-28</span>
+          <span class="px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 text-xs font-bold">利好（中长期）</span>
+        </div>
+        <span class="text-xs font-mono font-bold text-primary-600 dark:text-primary-400">影响力 6.5 / 10</span>
+      </div>
+      <h3 class="font-bold text-gray-900 dark:text-white mb-3">大基金三期3440亿元加速落地，约70%投向设备与材料国产替代</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+        <div class="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 border border-gray-100 dark:border-gray-700/60">
+          <strong class="text-gray-900 dark:text-white block mb-1.5">1. 政策要点（大基金三期）</strong>
+          10月28日士兰微公告大基金三期旗下华芯鼎新以9亿元增资士兰集华12英寸高端模拟产线（首笔3亿于11月30日前到位）。三期约<strong>70%资金聚焦设备与材料短板</strong>。
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 border border-gray-100 dark:border-gray-700/60">
+          <strong class="text-gray-900 dark:text-white block mb-1.5">2. 传导路径（分子 + 分母双改善）</strong>
+          虽非直接注资中芯，但国产设备与材料验证导入提速后，中长期直接缓解中芯最大的扩产瓶颈（设备交期），降低对海外设备依赖，抬升产能可见度并收窄地缘折价。
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 border border-gray-100 dark:border-gray-700/60">
+          <strong class="text-gray-900 dark:text-white block mb-1.5">3. 业务敞口评估</strong>
+          覆盖成熟制程扩产所需的刻蚀、沉积、清洗、量测设备及硅片/光刻胶等材料国产化保障。短期6—12个月难解燃眉之急，但中长期方向确定性高。
+        </div>
+      </div>
+    </div>
+
+    <!-- MACRO 3 -->
+    <div id="card-macro-3" class="bg-white dark:bg-[#161f2c] rounded-2xl p-6 sm:p-8 shadow-sm border border-gray-200 dark:border-gray-800 border-l-4 border-l-amber-500 card-interactive">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <span class="px-3 py-1 rounded-lg bg-amber-500 text-white text-xs font-bold">全球 · 供应链与Capex</span>
+          <span class="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 font-mono"><i data-lucide="calendar" class="w-3 h-3"></i> 2026-11-13</span>
+          <span class="px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-xs font-bold">中性偏多（价格）/ 偏空（量增）</span>
+        </div>
+        <span class="text-xs font-mono font-bold text-primary-600 dark:text-primary-400">影响力 7.5 / 10</span>
+      </div>
+      <h3 class="font-bold text-gray-900 dark:text-white mb-3">全球设备供应链紧张与Capex节奏放缓：部分交期超24个月</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs sm:text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+        <div class="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 border border-gray-100 dark:border-gray-700/60">
+          <strong class="text-gray-900 dark:text-white block mb-1.5">1. 态势要点</strong>
+          全球新设备交期延至16—24个月，中芯部分设备超24个月。公司Q3资本开支74.23亿元（环比-41%，连降三季），里昂预计2026全年Capex或低于80亿美元。
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 border border-gray-100 dark:border-gray-700/60">
+          <strong class="text-gray-900 dark:text-white block mb-1.5">2. 传导路径（量价跷跷板）</strong>
+          分子端：新增产能放缓（Q3月产能仅环比+2万片）限制量增，但行业供给受限反而保护了价格与毛利率，同时减轻短期折旧压力；当前市场更看重“价”的韧性。
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-800/60 rounded-xl p-4 border border-gray-100 dark:border-gray-700/60">
+          <strong class="text-gray-900 dark:text-white block mb-1.5">3. 业务敞口评估</strong>
+          影响全部新建产线爬坡节奏。若2027年设备到货依旧偏慢，中芯利润增长将更多来自产品组合升级与涨价，而非单纯产能翻倍。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== MATRIX & CALENDAR ========== -->
+<section id="matrix" class="max-w-7xl mx-auto px-4 sm:px-6 mb-10" data-aos="fade-up">
+  <div class="flex items-center gap-3 mb-6">
+    <div class="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-900/50 flex items-center justify-center">
+      <i data-lucide="grid-3x3" class="w-5 h-5 text-primary-600 dark:text-primary-300"></i>
+    </div>
+    <h2 class="text-xl sm:text-2xl font-bold">四、九大动态催化矩阵与未来 30 天跟踪日历</h2>
+  </div>
+
+  <!-- ⭐ 使用 Alpine.js 增加分类筛选交互 + 点击行直达对应卡片 -->
+  <div x-data="{ filter: 'all' }" class="bg-white dark:bg-[#161f2c] rounded-2xl p-5 sm:p-6 shadow-sm border border-gray-200 dark:border-gray-800 mb-8">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <h3 class="font-bold text-gray-900 dark:text-white flex items-center gap-2 text-sm sm:text-base">
+        <i data-lucide="list" class="w-4 h-4 text-primary-500"></i> 九大动态催化矩阵（点击行可跳转详情）
+      </h3>
+      <div class="flex flex-wrap gap-1.5 text-xs">
+        <button @click="filter = 'all'" :class="filter === 'all' ? 'bg-primary-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'" class="px-3 py-1 rounded-full font-semibold transition-colors">全部 (9)</button>
+        <button @click="filter = 'company'" :class="filter === 'company' ? 'bg-primary-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'" class="px-3 py-1 rounded-full font-semibold transition-colors">公司 (3)</button>
+        <button @click="filter = 'industry'" :class="filter === 'industry' ? 'bg-accent-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'" class="px-3 py-1 rounded-full font-semibold transition-colors">行业 (3)</button>
+        <button @click="filter = 'macro'" :class="filter === 'macro' ? 'bg-rose-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'" class="px-3 py-1 rounded-full font-semibold transition-colors">宏观 (3)</button>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="text-xs sm:text-sm">
+        <thead>
+          <tr class="bg-gray-50 dark:bg-gray-800/80">
+            <th class="font-semibold text-gray-700 dark:text-gray-300">类别</th>
+            <th class="font-semibold text-gray-700 dark:text-gray-300">日期</th>
+            <th class="font-semibold text-gray-700 dark:text-gray-300">核心事件</th>
+            <th class="font-semibold text-gray-700 dark:text-gray-300">影响方向</th>
+            <th class="font-semibold text-gray-700 dark:text-gray-300">强度</th>
+            <th class="font-semibold text-gray-700 dark:text-gray-300">核心投资含义</th>
+          </tr>
+        </thead>
+        <tbody class="text-gray-600 dark:text-gray-300">
+          <tr x-show="filter === 'all' || filter === 'company'" onclick="location.href='#card-company-1'" class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+            <td><span class="px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900/60 text-primary-700 dark:text-primary-300 font-semibold text-xs">公司</span></td>
+            <td class="whitespace-nowrap font-mono">2026-11-12</td>
+            <td class="font-medium text-gray-900 dark:text-gray-100">Q3营收/毛利率超指引上限，扣非净利+107.3%</td>
+            <td><span class="text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap">重大利好</span></td>
+            <td class="font-bold font-mono">9.5</td>
+            <td>经营杠杆释放，AI配套需求验证，盈利底板上移</td>
+          </tr>
+          <tr x-show="filter === 'all' || filter === 'macro'" onclick="location.href='#card-macro-1'" class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+            <td><span class="px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 font-semibold text-xs">宏观</span></td>
+            <td class="whitespace-nowrap font-mono">2026-11-16</td>
+            <td class="font-medium text-gray-900 dark:text-gray-100">美国BIS新规收紧先进芯片代工/封装审查与远程算力</td>
+            <td><span class="text-rose-600 dark:text-rose-400 font-semibold whitespace-nowrap">压估值/强替代</span></td>
+            <td class="font-bold font-mono">9.0</td>
+            <td>短期压制外资估值，中期强化内资国产替代稀缺溢价</td>
+          </tr>
+          <tr x-show="filter === 'all' || filter === 'company'" onclick="location.href='#card-company-2'" class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+            <td><span class="px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900/60 text-primary-700 dark:text-primary-300 font-semibold text-xs">公司</span></td>
+            <td class="whitespace-nowrap font-mono">2026-11-13</td>
+            <td class="font-medium text-gray-900 dark:text-gray-100">全年营收指引超120亿美元，设备交期扰动Capex</td>
+            <td><span class="text-amber-600 dark:text-amber-400 font-semibold whitespace-nowrap">中性偏多</span></td>
+            <td class="font-bold font-mono">8.5</td>
+            <td>“需求强、供给堵”，价格韧性优先于量增弹性</td>
+          </tr>
+          <tr x-show="filter === 'all' || filter === 'industry'" onclick="location.href='#card-industry-1'" class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+            <td><span class="px-2 py-0.5 rounded bg-accent-100 dark:bg-accent-900/50 text-accent-700 dark:text-accent-300 font-semibold text-xs">行业</span></td>
+            <td class="whitespace-nowrap font-mono">2026-11-02 / 11-16</td>
+            <td class="font-medium text-gray-900 dark:text-gray-100">三星加速退出8英寸，成熟制程供需转紧持续涨价</td>
+            <td><span class="text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap">结构利好</span></td>
+            <td class="font-bold font-mono">8.0</td>
+            <td>行业贝塔加持，存量产能价值抬升，价格端直接受益</td>
+          </tr>
+          <tr x-show="filter === 'all' || filter === 'macro'" onclick="location.href='#card-macro-3'" class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+            <td><span class="px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 font-semibold text-xs">宏观</span></td>
+            <td class="whitespace-nowrap font-mono">2026-11-13</td>
+            <td class="font-medium text-gray-900 dark:text-gray-100">全球设备供应紧张与Q3 Capex环比-41%（或低于80亿）</td>
+            <td><span class="text-amber-600 dark:text-amber-400 font-semibold whitespace-nowrap">价多量空</span></td>
+            <td class="font-bold font-mono">7.5</td>
+            <td>抑制全行业新增供给，但限制2027年产能翻倍弹性</td>
+          </tr>
+          <tr x-show="filter === 'all' || filter === 'company'" onclick="location.href='#card-company-3'" class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+            <td><span class="px-2 py-0.5 rounded bg-primary-100 dark:bg-primary-900/60 text-primary-700 dark:text-primary-300 font-semibold text-xs">公司</span></td>
+            <td class="whitespace-nowrap font-mono">2026-11-16~19</td>
+            <td class="font-medium text-gray-900 dark:text-gray-100">机构评级剧烈分化（大和上调 vs 小摩/里昂下调）+ 南向流入</td>
+            <td><span class="text-sky-600 dark:text-sky-400 font-semibold whitespace-nowrap">中性分歧</span></td>
+            <td class="font-bold font-mono">7.0</td>
+            <td>缺乏一致预期，地缘边际消息更易引发剧烈波动</td>
+          </tr>
+          <tr x-show="filter === 'all' || filter === 'industry'" onclick="location.href='#card-industry-2'" class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+            <td><span class="px-2 py-0.5 rounded bg-accent-100 dark:bg-accent-900/50 text-accent-700 dark:text-accent-300 font-semibold text-xs">行业</span></td>
+            <td class="whitespace-nowrap font-mono">2026-11-05</td>
+            <td class="font-medium text-gray-900 dark:text-gray-100">代工报价分化：三星/格芯降价，中芯维持涨价</td>
+            <td><span class="text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap">偏利好</span></td>
+            <td class="font-bold font-mono">6.5</td>
+            <td>客群向AI/汽车转移使价格韧性明显优于消费类同业</td>
+          </tr>
+          <tr x-show="filter === 'all' || filter === 'macro'" onclick="location.href='#card-macro-2'" class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+            <td><span class="px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-900/50 text-rose-700 dark:text-rose-300 font-semibold text-xs">宏观</span></td>
+            <td class="whitespace-nowrap font-mono">2026-10-28</td>
+            <td class="font-medium text-gray-900 dark:text-gray-100">大基金三期增资士兰集华，70%资金押注设备/材料国产化</td>
+            <td><span class="text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap">中长期利好</span></td>
+            <td class="font-bold font-mono">6.5</td>
+            <td>加速国产设备验证替代，中长期缓解扩产卡脖子</td>
+          </tr>
+          <tr x-show="filter === 'all' || filter === 'industry'" onclick="location.href='#card-industry-3'" class="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/60 transition-colors">
+            <td><span class="px-2 py-0.5 rounded bg-accent-100 dark:bg-accent-900/50 text-accent-700 dark:text-accent-300 font-semibold text-xs">行业</span></td>
+            <td class="whitespace-nowrap font-mono">2026-11-13</td>
+            <td class="font-medium text-gray-900 dark:text-gray-100">行业设备交期普遍达16—24个月，成扩产共同瓶颈</td>
+            <td><span class="text-amber-600 dark:text-amber-400 font-semibold whitespace-nowrap">中性约束</span></td>
+            <td class="font-bold font-mono">6.0</td>
+            <td>全行业产能扩张受阻，存量龙头稳态盈利能见度提升</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Forward calendar -->
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4" data-aos="fade-up" data-aos-delay="80">
+    <div class="bg-white dark:bg-[#161f2c] rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-800 card-interactive">
+      <div class="flex items-center gap-2 mb-2.5">
+        <i data-lucide="file-text" class="w-4 h-4 text-primary-500"></i>
+        <span class="text-xs font-bold text-primary-600 dark:text-primary-300 font-mono">2026年12月中旬</span>
+      </div>
+      <h4 class="font-bold text-gray-900 dark:text-white text-sm mb-2">Q4经营预览与指引验证窗口</h4>
+      <p class="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">跟踪Q4收入能否落在+4%—6%环比指引区间，及毛利率是否守住26%—28%下沿。</p>
+    </div>
+    <div class="bg-white dark:bg-[#161f2c] rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-800 card-interactive">
+      <div class="flex items-center gap-2 mb-2.5">
+        <i data-lucide="wrench" class="w-4 h-4 text-accent-500"></i>
+        <span class="text-xs font-bold text-accent-600 dark:text-accent-300">未来30日持续跟踪</span>
+      </div>
+      <h4 class="font-bold text-gray-900 dark:text-white text-sm mb-2">设备到货与Capex执行进度</h4>
+      <p class="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">关注设备商法说会及2026年资本开支是否跌破80亿美元，决定2027年产线爬坡预期。</p>
+    </div>
+    <div class="bg-white dark:bg-[#161f2c] rounded-xl p-5 shadow-sm border border-gray-200 dark:border-gray-800 card-interactive">
+      <div class="flex items-center gap-2 mb-2.5">
+        <i data-lucide="shield-alert" class="w-4 h-4 text-rose-500"></i>
+        <span class="text-xs font-bold text-rose-600 dark:text-rose-400">未来30日持续跟踪</span>
+      </div>
+      <h4 class="font-bold text-gray-900 dark:text-white text-sm mb-2">BIS新规细则与实体清单动态</h4>
+      <p class="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">11月16日新规落地细则与审查口径，是目前唯一能打破当前多空平衡的尾部变量。</p>
+    </div>
+  </div>
+  <p class="text-xs text-gray-400 dark:text-gray-500 mt-4">注：近30日内无中芯国际限售解禁事件。下一个解禁日为 <strong class="text-gray-600 dark:text-gray-300">2027-06-23</strong>（5.472亿股，占总股本6.39%），不在当前跟踪窗口内。</p>
+</section>
+
+</main>
+
+<footer class="border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0b0f15] py-10">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-8">
+      <div>
+        <h4 class="font-bold text-sm text-gray-900 dark:text-white mb-3">数据来源</h4>
+        <ul class="text-xs text-gray-500 dark:text-gray-400 space-y-1.5 leading-relaxed">
+          <li>中芯国际2026年Q3报告（2026-11-12）及业绩会（11-13）</li>
+          <li>TrendForce 晶圆代工市场快讯（10-19 / 11-02 / 11-13）</li>
+          <li>美国商务部 BIS 新规公告（2026-11-16）</li>
+          <li>大和、摩根大通、中信里昂、开源证券研报（11-16~11-19）</li>
+          <li>士兰微投资公告（2026-10-28）及公开财经媒体</li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="font-bold text-sm text-gray-900 dark:text-white mb-3">覆盖时间区间</h4>
+        <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">主窗口为 2026-10-23 至 2026-11-22（30个自然日）；其中行业 Top 1 首份趋势报告追溯至 2026-10-19（34日窗口），所有实际发生日期均已明确标注。</p>
+      </div>
+      <div>
+        <h4 class="font-bold text-sm text-gray-900 dark:text-white mb-3">免责声明</h4>
+        <p class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">本报告基于公开信息整理，仅供研究参考，不构成任何投资建议。半导体行业受地缘政治、技术迭代与周期波动多重影响，请独立判断并承担风险。</p>
+      </div>
+    </div>
+    <div class="border-t border-gray-100 dark:border-gray-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+      <p class="text-xs text-gray-400 dark:text-gray-500">中芯国际（688981.SH / 00981.HK）· 最新动态全景追踪 · 截至 2026-11-22</p>
+      <p class="text-xs text-gray-400 dark:text-gray-500">Generated for event-driven research purposes</p>
+    </div>
+  </div>
+</footer>
+
 <script>
 window.addEventListener('scroll', () => {
   const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
@@ -137,8 +716,9 @@ window.addEventListener('scroll', () => {
   document.getElementById('progressBar').style.width = (height > 0 ? (winScroll / height) * 100 : 0) + '%';
 });
 document.addEventListener('DOMContentLoaded', () => {
-  lucide.createIcons();
-  AOS.init({ duration: 800, once: true });
+  syncThemeIcons();
+  if (window.lucide) lucide.createIcons();
+  if (window.AOS) AOS.init({ duration: 450, offset: 30, once: true });
 });
 </script>
 </body>
