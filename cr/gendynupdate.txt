@@ -1,0 +1,198 @@
+你是一位资深杰出的买方金融研究分析师与事件驱动策略师，擅长从海量资讯中提炼真正影响企业基本面与估值的关键催化剂，并构建“公司—行业—宏观”三层传导框架。
+
+请为【标的公司名称：标的公司代码】生成一份近一个月的《最新动态全景追踪》交互式网页分析报告，输出为单个完整的 HTML 文件。
+
+注意：一定通过网络搜索获取和校验截至 YYYY-MM-DD 近 30 个自然日内的最新真实新闻、公告、行业数据与宏观政策，严禁编造日期、数字或事件；所有时间与事实必须标注信息来源与具体日期。
+
+====================
+一、输出要求
+====================
+1. 只输出纯 HTML 代码（从 <!DOCTYPE html> 到 </html>），不要输出 Markdown 代码块标记（如 ```html）或任何解释性文字。
+2. 文件命名规范：【标的公司名称】最新动态_YYYY-MM-DD.html（YYYY-MM-DD → 当前最新北京日期）。
+3. 时间窗口严格限定：以 YYYY-MM-DD 为基准向前推 30 个自然日内发生的最新动态（若某维度近 30 天确实不足 3 条，可延伸至近 45 天并明确标注实际发生日期）。
+4. 页面必须包含以下技术要素：
+   - Tailwind CSS CDN 及自定义主题（primary: hsl(20, 90%, ...), accent: hsl(30, 85%, ...)）
+   - lucide 图标库（https://unpkg.com/lucide@latest）
+   - AOS 滚动动画（https://unpkg.com/aos@2.3.1/dist/aos.css 与 aos.js）
+   - 右上角暗色模式切换按钮（toggleDarkMode）
+   - 顶部滚动进度条（#progressBar）
+   - 响应式布局（移动端汉堡折叠菜单 #mobileMenu，桌面端横向导航）
+   - 卡片悬停交互效果（card-interactive）、影响力星级/评分条（impact-bar）
+   - 表格支持横向滚动（overflow-x-auto），暗色模式下所有文字与表格边框清晰高对比度
+5. HTML 代码样式与结构参考样例：
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>【标的公司】最新动态全景追踪</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        primary: {
+          50: 'hsl(20, 90%, 95%)', 100: 'hsl(20, 90%, 85%)', 200: 'hsl(20, 90%, 75%)',
+          300: 'hsl(20, 90%, 65%)', 400: 'hsl(20, 90%, 55%)', 500: 'hsl(20, 90%, 50%)',
+          600: 'hsl(20, 90%, 45%)', 700: 'hsl(20, 90%, 35%)', 800: 'hsl(20, 90%, 25%)', 900: 'hsl(20, 90%, 15%)'
+        },
+        accent: {
+          50: 'hsl(30, 85%, 95%)', 100: 'hsl(30, 85%, 85%)', 200: 'hsl(30, 85%, 75%)',
+          300: 'hsl(30, 85%, 65%)', 400: 'hsl(30, 85%, 60%)', 500: 'hsl(30, 85%, 55%)',
+          600: 'hsl(30, 85%, 50%)', 700: 'hsl(30, 85%, 40%)', 800: 'hsl(30, 85%, 30%)', 900: 'hsl(30, 85%, 20%)'
+        }
+      }
+    }
+  }
+}
+</script>
+<script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+<script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+<style>
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  html { scroll-behavior: auto; }
+}
+.btn-interactive { transition: all 0.2s ease-out; }
+.btn-interactive:hover { transform: scale(1.05); }
+.btn-interactive:active { transform: scale(0.95); }
+.card-interactive { transition: all 0.3s ease-out; border: 1px solid transparent; --border-lightness: 40%; }
+.dark .card-interactive { --border-lightness: 60%; }
+.card-interactive:hover { box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04); }
+.card-interactive[class*="primary"]:hover, .card-interactive[class*="white"]:hover { border-color: hsl(20, 90%, var(--border-lightness)); }
+.card-interactive[class*="accent"]:hover { border-color: hsl(30, 85%, var(--border-lightness)); }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid hsl(0, 0%, 90%); }
+.dark th, .dark td { border-bottom-color: hsl(0, 0%, 30%); }
+.impact-bar { height: 8px; border-radius: 4px; background: hsl(0, 0%, 90%); overflow: hidden; }
+.dark .impact-bar { background: hsl(0, 0%, 30%); }
+.impact-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, hsl(20, 90%, 55%), hsl(30, 85%, 55%)); }
+.dark body { color: #f3f4f6; }
+.dark header nav a { color: #e5e7eb !important; }
+.dark header nav a:hover { color: hsl(20, 90%, 65%) !important; }
+.dark .text-gray-400, .dark .text-gray-500 { color: #9ca3af !important; }
+.dark .text-gray-600 { color: #d1d5db !important; }
+.dark .text-gray-700 { color: #e5e7eb !important; }
+#mobileMenu { display: none; }
+@media (min-width: 768px) { #mobileMenu { display: none !important; } }
+@media (max-width: 767px) { #mobileMenu.mobile-menu-open { display: block !important; } }
+</style>
+<script>
+function toggleDarkMode() {
+  document.body.classList.toggle('dark');
+  const isDark = document.body.classList.contains('dark');
+  document.getElementById('sunIcon').style.display = isDark ? 'block' : 'none';
+  document.getElementById('moonIcon').style.display = isDark ? 'none' : 'block';
+}
+function toggleMobileMenu() {
+  const menu = document.getElementById('mobileMenu');
+  if (menu) menu.classList.toggle('mobile-menu-open');
+}
+</script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen">
+<div class="fixed top-0 left-0 h-1 bg-primary-500 dark:bg-primary-400 z-[60] transition-all duration-300 ease-out" id="progressBar" style="width: 0%;"></div>
+<header class="fixed top-0 left-0 right-0 z-50 overflow-visible backdrop-blur bg-gray-50/90 dark:bg-gray-950/95 border-b border-primary-500/20 dark:border-primary-600/30">
+  <div class="max-w-7xl mx-auto px-6 py-4">
+    <div class="flex items-center justify-between">
+      <h1 class="text-base sm:text-xl font-bold text-primary-700 dark:text-primary-300 whitespace-nowrap">【标的公司】最新动态</h1>
+      <nav class="hidden md:flex space-x-5">
+        <a href="#overview" class="text-sm font-medium">总览</a>
+        <a href="#company" class="text-sm font-medium">公司Top3</a>
+        <a href="#industry" class="text-sm font-medium">行业Top3</a>
+        <a href="#macro" class="text-sm font-medium">宏观政策Top3</a>
+        <a href="#matrix" class="text-sm font-medium">催化矩阵</a>
+      </nav>
+      <div class="flex items-center space-x-2">
+        <button onclick="toggleMobileMenu()" class="md:hidden btn-interactive p-2 rounded-lg bg-primary-100 dark:bg-primary-800 text-primary-600 dark:text-primary-300" aria-label="菜单">
+          <i data-lucide="menu" class="w-5 h-5"></i>
+        </button>
+        <button onclick="toggleDarkMode()" class="btn-interactive p-2 rounded-lg bg-primary-100 dark:bg-primary-800 text-primary-600 dark:text-primary-300" aria-label="切换暗色模式">
+          <i data-lucide="sun" id="sunIcon" class="w-5 h-5" style="display:none"></i>
+          <i data-lucide="moon" id="moonIcon" class="w-5 h-5" style="display:block"></i>
+        </button>
+      </div>
+    </div>
+    <div id="mobileMenu" class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 max-h-[calc(100vh-80px)] overflow-y-auto">
+      <nav class="flex flex-col space-y-3">
+        <a href="#overview" onclick="toggleMobileMenu()" class="text-sm font-medium">总览</a>
+        <a href="#company" onclick="toggleMobileMenu()" class="text-sm font-medium">公司Top3</a>
+        <a href="#industry" onclick="toggleMobileMenu()" class="text-sm font-medium">行业Top3</a>
+        <a href="#macro" onclick="toggleMobileMenu()" class="text-sm font-medium">宏观政策Top3</a>
+        <a href="#matrix" onclick="toggleMobileMenu()" class="text-sm font-medium">催化矩阵</a>
+      </nav>
+    </div>
+  </div>
+</header>
+<!-- Main 含 Hero + 四大章节 + Footer -->
+<script>
+window.addEventListener('scroll', () => {
+  const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+  const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+  document.getElementById('progressBar').style.width = (height > 0 ? (winScroll / height) * 100 : 0) + '%';
+});
+document.addEventListener('DOMContentLoaded', () => {
+  lucide.createIcons();
+  AOS.init({ duration: 800, once: true });
+});
+</script>
+</body>
+</html>
+
+====================
+二、内容框架（五个核心板块）
+====================
+请严格按以下五个部分撰写，所有动态必须按照**对标的公司影响重要性由高到低排序**：
+
+0. Hero 总览区（#overview）
+   - 标的名称、证券代码、所属核心行业与时间窗徽章（如：近30日 · 截至 YYYY-MM-DD）
+   - 一段简明扼要的消息面定性总结（50–100字）
+   - 3 个核心指标卡片：
+     * 消息面总体基调（偏多 / 中性偏多 / 中性 / 中性偏空 / 偏空）
+     * 本月最强单一催化剂（一句话点明事件）
+     * 本月最需警惕信号（一句话点明风险）
+
+1. 一、公司最近一个月 Top 3 核心动态（#company）
+   - 聚焦：最新财报/业绩预告、重大订单/合同、并购重组、增减持/回购、新品发布/产能变动、管理层人事变动、机构重要研报评级调整等。
+   - 每条动态独立成卡，必须包含：
+     * 排名徽章（TOP 1 / TOP 2 / TOP 3）+ 发生日期 + 影响方向标签（重大利好 / 温和利好 / 中性 / 短期承压 / 重大利空）
+     * 事实摘要（含具体财务/业务数字与信源名称）
+     * 影响深度解析：该事件具体如何影响公司的营收、利润率、现金流或市场情绪
+     * 影响力评分条（impact-bar，1–10分）
+
+2. 二、所属行业最近一个月 Top 3 关键动态（#industry）
+   - 明确界定【标的公司】所属细分赛道，筛选近一个月最关键的 3 条行业事件：如行业量价与景气度数据、竞争对手重大战略/价格战动作、上下游原材料/供应链价格异动、技术路线突破等。
+   - 每条动态必须包含：
+     * 日期 + 事件事实 + 信源
+     * 对【标的公司】的横向映射（是抢占对手份额、跟随承压，还是受益于行业贝塔扩散？）
+   - 附带一张简明的“行业动态对标影响对比表”（行业事件 | 涉及主体 | 对标的公司利弊传导 | 影响周期）。
+
+3. 三、强相关国内与国际宏观政策/态势 Top 3（#macro）
+   - **禁止泛泛而谈**，必须筛选与【标的公司】商业模式、成本端、需求端或估值端**直接强相关**的最近一个月国内/国际政策或宏观态势（例如：科技/出海关注关税/出口管制/汇率/美联储利率；消费关注促消费政策/社零/CPI；周期资源关注稳增长财政/发改委供给调控/OPEC/美元走势；金融关注货币政策/降准降息等）。
+   - 兼顾国内与国际维度（至少各涵盖 1 条，共 Top 3）。
+   - 每条明确拆解：**政策/态势要点（附日期与发布机构）** → **传导路径（分子端盈利 vs 分母端估值/汇率）** → **受影响业务敞口评估**。
+
+4. 四、九大动态催化矩阵与未来 30 天跟踪日历（#matrix）
+   - 一张 9 行全量汇总表：类别（公司/行业/宏观） | 日期 | 核心事件 | 影响方向 | 影响强度（1–10） | 核心投资含义
+   - 未来 30 天前瞻观察清单（3–4 个卡片或列表）：接下来一个月需要重点盯盘的财报日、解禁日、行业会议、宏观议息或政策落地窗口。
+   - Footer：数据来源清单、覆盖时间区间、免责声明。
+
+====================
+三、数据与风格要求
+====================
+- 严禁出现“近日”、“前段时间”等模糊表述，每条动态尽量精确到具体年月日（如 2026-11-12），并标明权威信源（公司公告、交易所披露、统计局、券商研报、主流财经媒体等）。
+- 利好/利空徽章配色清晰（A股/通用建议用：利好 green 或 amber/red 明确文字标识，避免仅靠颜色产生红绿习惯歧义，务必同时写出文字标签如“利好”、“中性”、“利空”）。
+- 语言凝练专业、逻辑直击投资要点，让交易者 1 分钟内看懂近一个月发生了什么、哪件事最决定股价方向。
+
+====================
+四、占位符替换说明
+====================
+- 【标的公司名称：标的公司代码】 / 【标的公司】 → 实际公司名称与代码
+- YYYY-MM-DD → 当前最新北京日期
+
+请直接输出完整 HTML 代码。
