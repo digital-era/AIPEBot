@@ -7,7 +7,7 @@
 一、输出要求
 ====================
 1. 只输出 HTML 代码，不要任何解释性文字。
-2. 文件命名为：【标的公司名称】体系全景解析_YYYY-MM-DD.html(YYYY-MM-DD → 当前最新北京日期)
+2. 文件命名为：【标的公司名称】体系解析_YYYY-MM-DD.html(YYYY-MM-DD → 当前最新北京日期)
 3. 页面必须包含以下技术要素：
    - Tailwind CSS CDN 及自定义主题（primary/accent 色系与模板一致）
    - lucide 图标库
