@@ -1,0 +1,31 @@
+刚才那份 HTML 沿用了欧美行情习惯（绿涨红跌）。如果要改成国内看盘的红涨绿跌，只需要把涨跌数值、趋势、多空情景里的 emerald（绿）和 rose（红）对调即可。
+*(注意：**「价格水位标尺」和「关键价格锚点表」*里本身就是上方压力位标红/橙、下方支撑位标绿，符合国内习惯，不用改。)
+具体需要修改的 6 个位置（按从上到下顺序）
+1. 顶栏标题小圆点 & Hero 总览区（#overview）
+顶栏圆点：bg-emerald-500 → bg-rose-500
+右上角趋势徽章 强势上攻 → 高位分歧：
+bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800
+→ 改为 bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800
+KPI 卡片 1（+2.63%）与卡片 2（+20.52%、跑赢沪深300 ≈ +24.2 pct）的 text-emerald-600 dark:text-emerald-400
+→ 全部改为 text-rose-600 dark:text-rose-400
+2. 一、阶段复盘（#phases）
+对比表 & 下方 Alpha 说明：
+中芯国际 (+20.52%)、半导体 (+2.91%)、Alpha (+24.2 个百分点) 的 text-emerald-600 dark:text-emerald-400
+→ 改为 text-rose-600 dark:text-rose-400
+沪深 300 (≈ -3.68%) 的 text-rose-500 dark:text-rose-400
+→ 改为 text-emerald-600 dark:text-emerald-400
+三个波段卡片：
+波段 1（-8.93%）：text-rose-500 dark:text-rose-400 → text-emerald-600 dark:text-emerald-400
+波段 2（+9.41%）：把卡片的 border-l-emerald-500、徽章里的 emerald、以及数字 text-emerald-600 dark:text-emerald-400 → 全部把 emerald 改为 rose
+波段 3（+13.54%）：数字 text-emerald-600 dark:text-emerald-400 → text-rose-600 dark:text-rose-400
+3. 二、涨跌根因（#drivers）
+左卡「多头根因（上涨驱动）」：标题 text-emerald-700 dark:text-emerald-300 和下面 3 条的 border-emerald-500
+→ 全部把 emerald 改为 rose
+右卡「空头 / 压制根因（回调与阻力）」：标题 text-rose-600 dark:text-rose-400 和下面 3 条的 border-rose-500
+→ 全部把 rose 改为 emerald
+4. 三、技术面速览条（#technicals）
+MA60 均线（≈ 113–114 (已站上)）：text-emerald-600 dark:text-emerald-400 → text-rose-600 dark:text-rose-400
+5. 四、情景推演矩阵（#strategy）
+表格第 1 行 乐观突破：text-emerald-700 dark:text-emerald-300 → text-rose-600 dark:text-rose-400
+表格第 3 行 悲观破位：text-rose-600 dark:text-rose-400 → text-emerald-600 dark:text-emerald-400
+我是持仓者 筛选按钮：bg-emerald-600 → bg-rose-600（可选，与多头持仓色调保持一致）
